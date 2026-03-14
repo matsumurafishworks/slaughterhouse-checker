@@ -541,6 +541,36 @@ a:hover { opacity: 0.7; }
 .footer-right a { color: #666; }
 .footer-right a:hover { color: #aaa; opacity: 1; }
 
+
+/* ── Coverage bar ──────────────────────────────────────────────────────────── */
+.coverage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.coverage-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex: 1 1 180px;
+}
+.cov-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+.cov-label {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e8e3d8;
+}
+.cov-sub {
+  display: block;
+  font-size: 0.72rem;
+  color: #666;
+  margin-top: 0.1rem;
+}
+
 /* ── Mobile ─────────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .masthead { padding: 3rem 1.2rem 2.5rem; }
