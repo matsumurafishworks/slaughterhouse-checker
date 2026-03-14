@@ -1,5 +1,5 @@
 """
-app.py  –  UK Slaughterhouse Religious Slaughter Checker
+app.py  –  UK Abattoir Religious Slaughter Checker
 """
 
 import sqlite3
@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
+DB_PATH = os.environ.get("DB_PATH", "abattoirs.db")
 
 
 def get_db():
@@ -18,11 +18,11 @@ def get_db():
 
 
 def lookup(code: str):
-    """Return a slaughterhouse row or None."""
+    """Return a abattoir row or None."""
     clean = code.upper().replace(" ", "").replace("-", "")
     con = get_db()
     row = con.execute(
-        "SELECT * FROM slaughterhouses "
+        "SELECT * FROM abattoirs "
         "WHERE REPLACE(UPPER(approval_number),'-','') = ?",
         (clean,)
     ).fetchone()
@@ -55,7 +55,7 @@ def check():
             "found": False,
             "code": code,
             "message": (
-                "No slaughterhouse found for this approval code. "
+                "No abattoir found for this approval code. "
                 "Check the number from your packaging. "
                 "Scottish establishments are on a separate FSS register; "
                 "Northern Ireland on a separate DAERA register."
@@ -151,7 +151,7 @@ def check():
 def stats():
     con = get_db()
     totals = con.execute(
-        "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
+        "SELECT slaughter_status, COUNT(*) n FROM abattoirs GROUP BY slaughter_status"
     ).fetchall()
     last = con.execute(
         "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
