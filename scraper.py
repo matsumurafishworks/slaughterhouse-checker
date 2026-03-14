@@ -33,7 +33,10 @@ from pdfminer.layout import LAParams
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
+DB_PATH = os.environ.get(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slaughterhouses.db")
+)
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SlaughterhouseChecker/1.0)"}
 RELIGIOUS_KEYWORDS = ["halal","kosher","shechita","religious","non-stun","non stun","watok","dhabiha"]
 GB_PAT = re.compile(r"\bGB\s*(\d{3,5})\b", re.IGNORECASE)
