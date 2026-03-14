@@ -542,6 +542,51 @@ a:hover { opacity: 0.7; }
 .footer-right a:hover { color: #aaa; opacity: 1; }
 
 
+
+/* ── Contribute strip ──────────────────────────────────────────────────────── */
+.contribute-strip {
+  background: var(--paper2);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 1.25rem 1.5rem;
+}
+.contribute-strip-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.contribute-strip-text {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.6;
+  flex: 1;
+}
+.contribute-strip-text strong { color: var(--ink); }
+.contribute-strip-text a { color: var(--ink); font-weight: 600; }
+.contribute-strip-btn {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.7rem 1.25rem;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.contribute-strip-btn:hover { opacity: 0.8; color: var(--paper); }
+@media (max-width: 600px) {
+  .contribute-strip-inner { flex-direction: column; align-items: flex-start; }
+  .contribute-strip-btn { width: 100%; text-align: center; }
+}
+
 /* ── Coverage bar ──────────────────────────────────────────────────────────── */
 .coverage-bar {
   display: flex;
