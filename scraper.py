@@ -1,18 +1,22 @@
 """
-scraper.py  –  UK Slaughterhouse Data Scraper  (fixed)
-=======================================================
-Real FSA CSV columns: AppNo, TradingName, Address1, Address2, Address3,
-Town, Postcode, Country, All_Activities, Slaughterhouse (Yes/blank),
-Game_Handling_Establishment (Yes/blank), Remarks
-
-HMC PDF: https://halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf
-  - Lists "GB 4227", "GB 2762" etc  →  extract numeric part to match AppNo
+scraper.py  –  UK Slaughterhouse Data Scraper
+==============================================
+Sources:
+  1. FSA CSV  (AppNo, TradingName, Slaughterhouse col = Yes/blank)
+  2. HMC PDF  halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf
+              parsed with pdfminer – extracts "GB 4227" style refs
+  3. HFA      halalfoodauthority.com HTML pages
+  4. Shechita UK  shechitauk.org HTML pages
 """
 
 import csv, io, logging, os, re, sqlite3, time
 from datetime import datetime
+from io import BytesIO
+
 import requests
 from bs4 import BeautifulSoup
+from pdfminer.high_level import extract_text_to_fp
+from pdfminer.layout import LAParams
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -21,6 +25,26 @@ DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SlaughterhouseChecker/1.0)"}
 FSA_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3"
 RELIGIOUS_KEYWORDS = ["halal","kosher","shechita","religious","non-stun","non stun","watok","dhabiha"]
+
+# Pattern to extract FSA approval number from "GB 4227" or "GB4227"
+GB_PAT = re.compile(r"\bGB\s*(\d{3,5})\b", re.IGNORECASE)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def pdf_to_text(pdf_bytes: bytes) -> str:
+    """Extract plain text from PDF bytes using pdfminer."""
+    output = BytesIO()
+    extract_text_to_fp(BytesIO(pdf_bytes), output, laparams=LAParams(), output_type="text", codec="utf-8")
+    return output.getvalue().decode("utf-8", errors="ignore")
+
+
+def fetch_gb_numbers_from_url(url: str, is_pdf: bool = False) -> set:
+    """Fetch a URL and return a set of GB approval numbers found in it."""
+    r = requests.get(url, headers=HEADERS, timeout=40)
+    r.raise_for_status()
+    text = pdf_to_text(r.content) if is_pdf else r.content.decode("utf-8", errors="ignore")
+    return set(GB_PAT.findall(text))
 
 
 # ── FSA CSV ───────────────────────────────────────────────────────────────────
@@ -47,7 +71,6 @@ def download_fsa_csv(url: str) -> list:
     rows = []
     for raw in reader:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
-        # Filter to slaughterhouses only using the dedicated Yes/blank columns
         if row.get("slaughterhouse","").lower() != "yes" and \
            row.get("game_handling_establishment","").lower() != "yes":
             continue
@@ -79,54 +102,54 @@ def download_fsa_csv(url: str) -> list:
 
 def scrape_hmc() -> set:
     """
-    HMC PDF lists entries like 'GB 4227  Manchester Abattoir Ltd'.
-    Extract the numeric part (4227) to match FSA AppNo.
+    HMC (Halal Monitoring Committee) – non-stun halal only.
+    Primary source: PDF updated monthly at halalhmc.org
     """
     log.info("Fetching HMC certified PDF…")
     numbers = set()
-    gb_pat = re.compile(r"\bGB\s+(\d{3,5})\b")
-    urls = [
-        "https://halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf",
-        "https://halalhmc.org/certified-outlets/",
-        "https://halalmc.co.uk/certified-outlets/",
+
+    sources = [
+        ("https://halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf", True),
+        ("https://halalhmc.org/meat-suppliers/", False),
+        ("https://halalhmc.org/hmc-suppliers-list/", False),
     ]
-    for url in urls:
+
+    for url, is_pdf in sources:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            r.raise_for_status()
-            text = r.content.decode("utf-8", errors="ignore")
-            found = set(gb_pat.findall(text))
+            found = fetch_gb_numbers_from_url(url, is_pdf=is_pdf)
             if found:
                 numbers |= found
                 log.info(f"HMC: {len(found)} numbers from {url}")
             time.sleep(1)
         except Exception as e:
             log.warning(f"HMC failed for {url}: {e}")
-    log.info(f"HMC total: {len(numbers)}")
+
+    log.info(f"HMC total: {len(numbers)} — {sorted(numbers)[:10]}...")
     return numbers
 
 
 # ── HFA ───────────────────────────────────────────────────────────────────────
 
 def scrape_hfa() -> set:
+    """HFA (Halal Food Authority) – stunned halal."""
     log.info("Fetching HFA certified list…")
     numbers = set()
-    gb_pat = re.compile(r"\bGB\s+(\d{3,5})\b")
+
     urls = [
-        "https://www.halalfoodauthority.com/certified-companies",
-        "https://www.halalfoodauthority.com/certified-abattoirs",
-        "https://halalfoodauthority.com/abattoirs",
+        ("https://www.halalfoodauthority.com/certified-companies", False),
+        ("https://www.halalfoodauthority.com/certified-abattoirs", False),
+        ("https://halalfoodauthority.com/abattoirs", False),
     ]
-    for url in urls:
+    for url, is_pdf in urls:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            if r.status_code == 200:
-                found = set(gb_pat.findall(r.content.decode("utf-8","ignore")))
+            found = fetch_gb_numbers_from_url(url, is_pdf=is_pdf)
+            if found:
                 numbers |= found
                 log.info(f"HFA: {len(found)} from {url}")
             time.sleep(1)
         except Exception as e:
             log.warning(f"HFA failed for {url}: {e}")
+
     log.info(f"HFA total: {len(numbers)}")
     return numbers
 
@@ -134,24 +157,26 @@ def scrape_hfa() -> set:
 # ── Shechita UK ───────────────────────────────────────────────────────────────
 
 def scrape_shechita() -> set:
+    """Shechita UK – Kosher, always non-stun."""
     log.info("Fetching Shechita UK list…")
     numbers = set()
-    gb_pat = re.compile(r"\bGB\s+(\d{3,5})\b")
+
     urls = [
         "https://www.shechitauk.org/approved-abattoirs/",
         "https://www.shechitauk.org/abattoirs/",
         "https://www.shechitauk.org/faqs/",
+        "https://www.shechitauk.org/",
     ]
     for url in urls:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            if r.status_code == 200:
-                found = set(gb_pat.findall(r.content.decode("utf-8","ignore")))
+            found = fetch_gb_numbers_from_url(url, is_pdf=False)
+            if found:
                 numbers |= found
                 log.info(f"Shechita: {len(found)} from {url}")
             time.sleep(1)
         except Exception as e:
             log.warning(f"Shechita failed for {url}: {e}")
+
     log.info(f"Shechita total: {len(numbers)}")
     return numbers
 
@@ -196,7 +221,10 @@ def classify(row, hmc, hfa, shechita):
     in_hfa      = n in hfa
     in_shechita = n in shechita
     if in_hmc or in_shechita:
-        bodies = ",".join(filter(None, ["HMC" if in_hmc else "", "Shechita" if in_shechita else ""]))
+        bodies = ",".join(filter(None, [
+            "HMC"      if in_hmc      else "",
+            "Shechita" if in_shechita else "",
+        ]))
         return "NON_STUN", bodies
     if in_hfa:
         return "STUN_RELIGIOUS", "HFA"
