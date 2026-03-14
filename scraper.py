@@ -231,26 +231,31 @@ def _normalise_postcode(pc: str) -> str:
 def _outlet_type_from_page(soup: BeautifulSoup) -> str:
     """
     Extract HMC's own category label from the outlet page.
-    The Foodery page shows it as plain text: "Caterers"
-    It appears to be in a <p> or <span> near the top of the content,
-    after the status line "Status: HMC Certified".
-    Also try <body> class names which WordPress often uses for taxonomy terms.
+    The category (e.g. "Caterers", "Butchers") appears immediately after
+    "Status: HMC Certified" in the page content.
+    We must NOT search the nav, which contains all category names.
     """
-    # Try body class (WordPress adds taxonomy slugs as body classes)
+    # Try body class — WordPress adds taxonomy term slugs as body classes
+    # e.g. class="... term-butchers ..." or "... term-caterers ..."
     body = soup.find("body")
     if body:
         classes = " ".join(body.get("class", []))
         for hmc_label, code in HMC_CATEGORY_MAP.items():
-            if hmc_label.replace(" ", "-") in classes or hmc_label in classes:
+            slug = hmc_label.replace(" ", "-")
+            if f"term-{slug}" in classes or f"category-{slug}" in classes:
                 return code
 
-    # Try finding the category text near "Status: HMC Certified"
-    full_text = soup.get_text(" ", strip=True).lower()
-    # Look in the first 2000 chars where the category typically appears
-    snippet = full_text[:2000]
-    for hmc_label, code in HMC_CATEGORY_MAP.items():
-        if hmc_label in snippet:
-            return code
+    # Find the text that comes RIGHT AFTER "Status: HMC Certified"
+    # The page structure is: h1 > "Status: HMC Certified" > category label
+    full_text = soup.get_text(" ", strip=True)
+    marker    = "Status: HMC Certified"
+    idx       = full_text.find(marker)
+    if idx != -1:
+        # Look at the 200 chars immediately after the status line
+        snippet = full_text[idx + len(marker): idx + len(marker) + 200].lower().strip()
+        for hmc_label, code in HMC_CATEGORY_MAP.items():
+            if snippet.startswith(hmc_label) or f"\n{hmc_label}" in snippet or f" {hmc_label}" in snippet[:50]:
+                return code
 
     return "OTHER"
 
