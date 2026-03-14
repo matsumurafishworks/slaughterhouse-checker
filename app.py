@@ -8,7 +8,10 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-DB_PATH = os.environ.get("DB_PATH", "abattoirs.db")
+DB_PATH = os.environ.get(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "slaughterhouses.db")
+)
 
 
 def get_db():
