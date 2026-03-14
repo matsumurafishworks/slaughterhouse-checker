@@ -1,6 +1,5 @@
 """
 scraper.py  – UK Abattoir Data Scraper (full UK coverage + HMC outlets)
-=======================================================================
 """
 
 import csv, io, logging, os, re, sqlite3, time
@@ -21,6 +20,22 @@ RELIGIOUS_KEYWORDS = ["halal","kosher","shechita","religious","non-stun","non st
 GB_PAT      = re.compile(r"\bGB\s*(\d{3,5})\b", re.IGNORECASE)
 POSTCODE_RE = re.compile(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b', re.IGNORECASE)
 PHONE_RE    = re.compile(r'(?:Tel|Phone|Telephone|T)[:\s]*([\d\s\+\(\)]{7,})', re.IGNORECASE)
+
+# HMC's own category labels → our codes
+HMC_CATEGORY_MAP = {
+    "butchers":                  "BUTCHER_SHOP",
+    "butcher":                   "BUTCHER_SHOP",
+    "restaurants and takeaways": "RESTAURANT",
+    "restaurant":                "RESTAURANT",
+    "restaurants":               "RESTAURANT",
+    "takeaway":                  "TAKEAWAY",
+    "takeaways":                 "TAKEAWAY",
+    "caterers":                  "RESTAURANT",
+    "caterer":                   "RESTAURANT",
+    "dessert shops":             "OTHER",
+    "dessert":                   "OTHER",
+    "other":                     "OTHER",
+}
 
 FSA_EW_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3"
 FSA_NI_CATALOG = "https://data.food.gov.uk/catalog/datasets/dae35822-ca4e-41a2-b2af-b10b6163085a"
@@ -204,21 +219,7 @@ def scrape_shechita() -> set:
     return numbers
 
 
-# ── HMC Outlets via sitemap + individual page scraping ───────────────────────
-
-def _classify_outlet_type(name: str) -> str:
-    nl = name.lower()
-    if any(w in nl for w in ["restaurant","kitchen","diner","café","cafe","grill",
-                              "tandoori","biryani","curry","dining","eatery","lounge"]):
-        return "RESTAURANT"
-    if any(w in nl for w in ["takeaway","take away","take-away","kebab","pizza",
-                              "burger","chicken","chippy","fish & chip","fish and chip"]):
-        return "TAKEAWAY"
-    if any(w in nl for w in ["butcher","meat","halal shop","grocery","supermarket",
-                              "cash & carry","food store","deli","butchery"]):
-        return "BUTCHER_SHOP"
-    return "OTHER"
-
+# ── HMC Outlets ───────────────────────────────────────────────────────────────
 
 def _normalise_postcode(pc: str) -> str:
     pc = pc.upper().strip()
@@ -227,11 +228,34 @@ def _normalise_postcode(pc: str) -> str:
     return pc
 
 
+def _outlet_type_from_page(soup: BeautifulSoup) -> str:
+    """
+    Extract HMC's own category label from the outlet page.
+    The Foodery page shows it as plain text: "Caterers"
+    It appears to be in a <p> or <span> near the top of the content,
+    after the status line "Status: HMC Certified".
+    Also try <body> class names which WordPress often uses for taxonomy terms.
+    """
+    # Try body class (WordPress adds taxonomy slugs as body classes)
+    body = soup.find("body")
+    if body:
+        classes = " ".join(body.get("class", []))
+        for hmc_label, code in HMC_CATEGORY_MAP.items():
+            if hmc_label.replace(" ", "-") in classes or hmc_label in classes:
+                return code
+
+    # Try finding the category text near "Status: HMC Certified"
+    full_text = soup.get_text(" ", strip=True).lower()
+    # Look in the first 2000 chars where the category typically appears
+    snippet = full_text[:2000]
+    for hmc_label, code in HMC_CATEGORY_MAP.items():
+        if hmc_label in snippet:
+            return code
+
+    return "OTHER"
+
+
 def get_outlet_urls_from_sitemap() -> list:
-    """
-    WordPress auto-generates /wp-sitemap-posts-{post_type}-{page}.xml
-    for every registered custom post type.
-    """
     urls = []
     for page_num in range(1, 30):
         sitemap_url = f"https://halalhmc.org/wp-sitemap-posts-outlets-{page_num}.xml"
@@ -239,7 +263,7 @@ def get_outlet_urls_from_sitemap() -> list:
             r = requests.get(sitemap_url, headers=HEADERS, timeout=20)
             if r.status_code == 404:
                 if page_num == 1:
-                    log.warning("No outlets sitemap found at expected URL")
+                    log.warning("No outlets sitemap found")
                 break
             r.raise_for_status()
             soup = BeautifulSoup(r.content, "xml")
@@ -258,10 +282,6 @@ def get_outlet_urls_from_sitemap() -> list:
 
 
 def scrape_outlet_page(url: str) -> dict | None:
-    """
-    Fetch a single outlet page and extract name/address/postcode/phone.
-    ACF fields on Verge Labs WordPress sites are rendered as static HTML.
-    """
     try:
         r    = requests.get(url, headers=HEADERS, timeout=20)
         r.raise_for_status()
@@ -287,7 +307,7 @@ def scrape_outlet_page(url: str) -> dict | None:
         pcm      = POSTCODE_RE.search(full_text)
         postcode = _normalise_postcode(pcm.group(1)) if pcm else ""
 
-        # Address block — try ACF/common selectors first, fall back to full text excerpt
+        # Address block
         address = ""
         for selector in [
             ".outlet-address", ".shop-address", ".address-block",
@@ -300,7 +320,7 @@ def scrape_outlet_page(url: str) -> dict | None:
                     address = t
                     break
 
-        # Town: segment before postcode in address or page text
+        # Town: segment before postcode
         town = ""
         if postcode:
             search_text = address or full_text
@@ -310,13 +330,16 @@ def scrape_outlet_page(url: str) -> dict | None:
                 parts = [p.strip() for p in re.split(r'[,\n]', pre) if p.strip()]
                 town  = parts[-1] if parts else ""
 
+        # Outlet type from HMC's own category label on the page
+        outlet_type = _outlet_type_from_page(soup)
+
         return {
             "name":        name,
             "address":     address,
             "town":        town,
             "postcode":    postcode,
             "phone":       phone,
-            "outlet_type": _classify_outlet_type(name),
+            "outlet_type": outlet_type,
             "source_url":  url,
             "latitude":    None,
             "longitude":   None,
@@ -327,15 +350,10 @@ def scrape_outlet_page(url: str) -> dict | None:
 
 
 def scrape_hmc_outlets() -> list:
-    """
-    Get all outlet URLs from the WordPress sitemap, then scrape each page.
-    """
     outlet_urls = get_outlet_urls_from_sitemap()
-
     if not outlet_urls:
-        log.warning("No outlet URLs found — skipping outlet scrape")
+        log.warning("No outlet URLs found")
         return []
-
     log.info(f"Scraping {len(outlet_urls)} outlet pages…")
     outlets = []
     for i, url in enumerate(outlet_urls):
@@ -345,8 +363,7 @@ def scrape_hmc_outlets() -> list:
         if (i + 1) % 100 == 0:
             log.info(f"Progress: {i + 1}/{len(outlet_urls)} pages scraped, {len(outlets)} outlets so far")
         time.sleep(0.4)
-
-    log.info(f"Outlet scrape complete: {len(outlets)} outlets from {len(outlet_urls)} pages")
+    log.info(f"Outlet scrape complete: {len(outlets)} outlets")
     return outlets
 
 
@@ -380,7 +397,7 @@ def geocode_outlets(outlets: list) -> list:
         if key in pc_coords:
             o["latitude"], o["longitude"] = pc_coords[key]
             matched += 1
-    log.info(f"Geocoding: {matched}/{len(outlets)} outlets have coordinates")
+    log.info(f"Geocoding: {matched}/{len(outlets)} have coordinates")
     return outlets
 
 
@@ -531,7 +548,7 @@ def run():
             outlets = geocode_outlets(outlets)
             upsert_outlets(con, outlets)
         else:
-            log.warning("No outlet data retrieved — hmc_outlets table will remain empty")
+            log.warning("No outlet data — hmc_outlets table will be empty")
     except Exception as e:
         log.error(f"HMC outlets failed: {e}")
 
