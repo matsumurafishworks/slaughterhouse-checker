@@ -1,12 +1,24 @@
 """
-scraper.py  –  UK Slaughterhouse Data Scraper
-==============================================
-Sources:
-  1. FSA CSV  (AppNo, TradingName, Slaughterhouse col = Yes/blank)
-  2. HMC PDF  halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf
-              parsed with pdfminer – extracts "GB 4227" style refs
-  3. HFA      halalfoodauthority.com HTML pages
-  4. Shechita UK  shechitauk.org HTML pages
+scraper.py  –  UK Slaughterhouse Data Scraper (full UK coverage)
+================================================================
+Data sources:
+  England & Wales: FSA open data CSV (monthly)
+  Scotland:        FSS open data CSV (irregular but public)
+  Northern Ireland: FSA/DAERA open data CSV (monthly)
+
+Halal/non-stun certification:
+  HMC PDF  – non-stun halal  (halalhmc.org)
+  HFA      – stunned halal   (halalfoodauthority.com)
+  Shechita – Kosher/non-stun (shechitauk.org)
+
+Status codes:
+  NON_STUN       – HMC or Shechita certified
+  STUN_RELIGIOUS – HFA certified
+  MIXED          – FSA flags religious activity, no cert body match
+  STANDARD       – no religious slaughter evidence found
+
+Note: Scotland legally requires stunning for all slaughter, so Scottish
+establishments will always be STANDARD unless on a cert body list.
 """
 
 import csv, io, logging, os, re, sqlite3, time
@@ -23,47 +35,68 @@ log = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SlaughterhouseChecker/1.0)"}
-FSA_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3"
 RELIGIOUS_KEYWORDS = ["halal","kosher","shechita","religious","non-stun","non stun","watok","dhabiha"]
-
-# Pattern to extract FSA approval number from "GB 4227" or "GB4227"
 GB_PAT = re.compile(r"\bGB\s*(\d{3,5})\b", re.IGNORECASE)
+
+# Catalog pages to scrape for latest CSV URL
+FSA_EW_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3"
+FSA_NI_CATALOG = "https://data.food.gov.uk/catalog/datasets/dae35822-ca4e-41a2-b2af-b10b6163085a"
+FSS_SCOT_PAGE  = "https://www.foodstandards.gov.scot/publications-and-research/publications/approved-premises-register"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def pdf_to_text(pdf_bytes: bytes) -> str:
-    """Extract plain text from PDF bytes using pdfminer."""
     output = BytesIO()
     extract_text_to_fp(BytesIO(pdf_bytes), output, laparams=LAParams(), output_type="text", codec="utf-8")
     return output.getvalue().decode("utf-8", errors="ignore")
 
 
-def fetch_gb_numbers_from_url(url: str, is_pdf: bool = False) -> set:
-    """Fetch a URL and return a set of GB approval numbers found in it."""
+def fetch_gb_numbers(url: str, is_pdf: bool = False) -> set:
     r = requests.get(url, headers=HEADERS, timeout=40)
     r.raise_for_status()
     text = pdf_to_text(r.content) if is_pdf else r.content.decode("utf-8", errors="ignore")
     return set(GB_PAT.findall(text))
 
 
-# ── FSA CSV ───────────────────────────────────────────────────────────────────
-
-def get_latest_fsa_csv_url() -> str:
-    log.info("Fetching FSA catalog page…")
-    r = requests.get(FSA_CATALOG, headers=HEADERS, timeout=30)
+def get_latest_csv_from_fsa_catalog(catalog_url: str) -> str:
+    """Scrape an FSA data catalog page and return the most recent CSV URL."""
+    r = requests.get(catalog_url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if "fsaopendata.blob.core.windows.net" in href and href.endswith(".csv"):
-            log.info(f"Latest CSV: {href}")
             return href
-    raise RuntimeError("Could not find FSA CSV URL.")
+    raise RuntimeError(f"No CSV found on {catalog_url}")
 
 
-def download_fsa_csv(url: str) -> list:
-    log.info("Downloading FSA CSV…")
+def get_latest_fss_scotland_csv() -> str:
+    """Scrape the FSS Scotland page for their latest CSV download link."""
+    r = requests.get(FSS_SCOT_PAGE, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.endswith(".csv") and "foodstandards.gov.scot" in href:
+            return href
+        # Sometimes relative URL
+        if href.endswith(".csv") and "approved" in href.lower():
+            return "https://www.foodstandards.gov.scot" + href if href.startswith("/") else href
+    # Fallback to known stable URL pattern
+    return "https://www.foodstandards.gov.scot/sites/default/files/2025-12/Approved%20Establishments%20in%20Scotland_0.csv"
+
+
+# ── FSA CSV parser (England & Wales + Northern Ireland share same format) ─────
+
+def parse_fsa_csv(url: str, country_override: str = "") -> list:
+    """
+    Download and parse an FSA-format CSV (England/Wales or Northern Ireland).
+    Columns: AppNo, TradingName, Address1, Address2, Address3, Town, Postcode,
+             Country, All_Activities, Slaughterhouse (Yes/blank),
+             Game_Handling_Establishment (Yes/blank), Remarks, ...
+    """
+    log.info(f"Downloading FSA CSV: {url}")
     r = requests.get(url, headers=HEADERS, timeout=120)
     r.raise_for_status()
     content = r.content.decode("utf-8-sig", errors="replace")
@@ -82,6 +115,7 @@ def download_fsa_csv(url: str) -> list:
             row.get("remarks",""),
             row.get("tradingname",""),
         ]).lower()
+        country = country_override or row.get("country","")
         rows.append({
             "approval_number":    approval,
             "name":               row.get("tradingname",""),
@@ -90,93 +124,123 @@ def download_fsa_csv(url: str) -> list:
             "town":               row.get("town",""),
             "county":             row.get("address3",""),
             "postcode":           row.get("postcode",""),
-            "country":            row.get("country",""),
+            "country":            country,
             "activities_raw":     row.get("all_activities",""),
             "fsa_religious_flag": any(kw in all_text for kw in RELIGIOUS_KEYWORDS),
         })
-    log.info(f"FSA: {len(rows)} slaughterhouse rows found.")
     return rows
 
 
-# ── HMC ───────────────────────────────────────────────────────────────────────
+# ── Scotland CSV parser (has 4-row header, slightly different structure) ──────
+
+def parse_scotland_csv(url: str) -> list:
+    """
+    FSS Scotland CSV has a 4-row preamble before the actual header row.
+    Columns: Approval Number, Trading Name, Address 1-4, Post Code,
+             All Activities Approved, Slaughterhouse (Yes/blank), ...
+    Scotland requires all animals to be stunned, so fsa_religious_flag=False always.
+    """
+    log.info(f"Downloading Scotland CSV: {url}")
+    r = requests.get(url, headers=HEADERS, timeout=60)
+    r.raise_for_status()
+    content = r.content.decode("utf-8-sig", errors="replace")
+
+    # Skip the 4-row preamble — find the real header row
+    lines = content.splitlines()
+    header_idx = 0
+    for i, line in enumerate(lines):
+        if "approval number" in line.lower() or "tradingname" in line.lower() or "trading name" in line.lower():
+            header_idx = i
+            break
+
+    clean_content = "\n".join(lines[header_idx:])
+    reader = csv.DictReader(io.StringIO(clean_content))
+
+    rows = []
+    for raw in reader:
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+        # Scotland CSV uses "Slaughterhouse" column same as FSA
+        if row.get("slaughterhouse","").lower() != "yes" and \
+           row.get("game_handling_establishment","").lower() != "yes":
+            continue
+        approval = (row.get("approval number") or row.get("appno","")).strip().upper()
+        if not approval:
+            continue
+        rows.append({
+            "approval_number":    approval,
+            "name":               row.get("trading name") or row.get("tradingname",""),
+            "address_line1":      row.get("address 1") or row.get("address1",""),
+            "address_line2":      row.get("address 2") or row.get("address2",""),
+            "town":               row.get("address 3") or row.get("town",""),
+            "county":             row.get("address 4") or row.get("county",""),
+            "postcode":           row.get("post code") or row.get("postcode",""),
+            "country":            "Scotland",
+            "activities_raw":     row.get("all activities approved") or row.get("all_activities",""),
+            "fsa_religious_flag": False,  # Scotland mandates stunning
+        })
+    return rows
+
+
+# ── Certification body scrapers ───────────────────────────────────────────────
 
 def scrape_hmc() -> set:
-    """
-    HMC (Halal Monitoring Committee) – non-stun halal only.
-    Primary source: PDF updated monthly at halalhmc.org
-    """
     log.info("Fetching HMC certified PDF…")
     numbers = set()
-
     sources = [
         ("https://halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf", True),
         ("https://halalhmc.org/meat-suppliers/", False),
         ("https://halalhmc.org/hmc-suppliers-list/", False),
     ]
-
     for url, is_pdf in sources:
         try:
-            found = fetch_gb_numbers_from_url(url, is_pdf=is_pdf)
+            found = fetch_gb_numbers(url, is_pdf=is_pdf)
             if found:
                 numbers |= found
-                log.info(f"HMC: {len(found)} numbers from {url}")
+                log.info(f"HMC: {len(found)} from {url}")
             time.sleep(1)
         except Exception as e:
-            log.warning(f"HMC failed for {url}: {e}")
-
-    log.info(f"HMC total: {len(numbers)} — {sorted(numbers)[:10]}...")
+            log.warning(f"HMC failed {url}: {e}")
+    log.info(f"HMC total: {len(numbers)}")
     return numbers
 
 
-# ── HFA ───────────────────────────────────────────────────────────────────────
-
 def scrape_hfa() -> set:
-    """HFA (Halal Food Authority) – stunned halal."""
     log.info("Fetching HFA certified list…")
     numbers = set()
-
-    urls = [
-        ("https://www.halalfoodauthority.com/certified-companies", False),
-        ("https://www.halalfoodauthority.com/certified-abattoirs", False),
-        ("https://halalfoodauthority.com/abattoirs", False),
-    ]
-    for url, is_pdf in urls:
+    for url in [
+        "https://www.halalfoodauthority.com/certified-companies",
+        "https://www.halalfoodauthority.com/certified-abattoirs",
+        "https://halalfoodauthority.com/abattoirs",
+    ]:
         try:
-            found = fetch_gb_numbers_from_url(url, is_pdf=is_pdf)
+            found = fetch_gb_numbers(url)
             if found:
                 numbers |= found
                 log.info(f"HFA: {len(found)} from {url}")
             time.sleep(1)
         except Exception as e:
-            log.warning(f"HFA failed for {url}: {e}")
-
+            log.warning(f"HFA failed {url}: {e}")
     log.info(f"HFA total: {len(numbers)}")
     return numbers
 
 
-# ── Shechita UK ───────────────────────────────────────────────────────────────
-
 def scrape_shechita() -> set:
-    """Shechita UK – Kosher, always non-stun."""
     log.info("Fetching Shechita UK list…")
     numbers = set()
-
-    urls = [
+    for url in [
         "https://www.shechitauk.org/approved-abattoirs/",
         "https://www.shechitauk.org/abattoirs/",
         "https://www.shechitauk.org/faqs/",
         "https://www.shechitauk.org/",
-    ]
-    for url in urls:
+    ]:
         try:
-            found = fetch_gb_numbers_from_url(url, is_pdf=False)
+            found = fetch_gb_numbers(url)
             if found:
                 numbers |= found
                 log.info(f"Shechita: {len(found)} from {url}")
             time.sleep(1)
         except Exception as e:
-            log.warning(f"Shechita failed for {url}: {e}")
-
+            log.warning(f"Shechita failed {url}: {e}")
     log.info(f"Shechita total: {len(numbers)}")
     return numbers
 
@@ -259,19 +323,60 @@ def upsert(con, rows, hmc, hfa, shechita):
         VALUES (?,?,?,?,?,?)
     """, (now,len(rows),counts["NON_STUN"],counts["STUN_RELIGIOUS"],counts["MIXED"],counts["STANDARD"]))
     con.commit()
-    log.info(f"DB updated — NON_STUN={counts['NON_STUN']} STUN_RELIGIOUS={counts['STUN_RELIGIOUS']} MIXED={counts['MIXED']} STANDARD={counts['STANDARD']}")
+    log.info(
+        f"DB updated — "
+        f"NON_STUN={counts['NON_STUN']} "
+        f"STUN_RELIGIOUS={counts['STUN_RELIGIOUS']} "
+        f"MIXED={counts['MIXED']} "
+        f"STANDARD={counts['STANDARD']}"
+    )
 
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def run():
-    con      = init_db()
-    csv_url  = get_latest_fsa_csv_url()
-    fsa_rows = download_fsa_csv(csv_url)
+    con = init_db()
+
+    all_rows = []
+
+    # England & Wales
+    try:
+        ew_url = get_latest_csv_from_fsa_catalog(FSA_EW_CATALOG)
+        ew_rows = parse_fsa_csv(ew_url)
+        log.info(f"England & Wales: {len(ew_rows)} slaughterhouses")
+        all_rows.extend(ew_rows)
+    except Exception as e:
+        log.error(f"England & Wales failed: {e}")
+
+    # Northern Ireland
+    try:
+        ni_url = get_latest_csv_from_fsa_catalog(FSA_NI_CATALOG)
+        ni_rows = parse_fsa_csv(ni_url, country_override="Northern Ireland")
+        log.info(f"Northern Ireland: {len(ni_rows)} slaughterhouses")
+        all_rows.extend(ni_rows)
+    except Exception as e:
+        log.error(f"Northern Ireland failed: {e}")
+
+    # Scotland
+    try:
+        scot_url = get_latest_fss_scotland_csv()
+        scot_rows = parse_scotland_csv(scot_url)
+        log.info(f"Scotland: {len(scot_rows)} slaughterhouses")
+        all_rows.extend(scot_rows)
+    except Exception as e:
+        log.error(f"Scotland failed: {e}")
+
+    log.info(f"Total across all regions: {len(all_rows)} slaughterhouses")
+
+    # Certification bodies
     hmc      = scrape_hmc()
     hfa      = scrape_hfa()
     shechita = scrape_shechita()
-    upsert(con, fsa_rows, hmc, hfa, shechita)
+
+    upsert(con, all_rows, hmc, hfa, shechita)
     con.close()
     log.info("Scrape complete.")
+
 
 if __name__ == "__main__":
     run()
