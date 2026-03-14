@@ -1,6 +1,6 @@
 """
-scraper.py  – UK Abattoir Data Scraper (full UK coverage)
-==========================================================
+scraper.py  – UK Abattoir Data Scraper (full UK coverage + HMC outlets)
+=======================================================================
 Data sources:
   England & Wales: FSA open data CSV (monthly)
   Scotland:        FSS open data CSV
@@ -10,6 +10,11 @@ Halal/non-stun certification:
   HMC PDF  – non-stun halal  (halalhmc.org)
   HFA      – stunned halal   (halalfoodauthority.com)
   Shechita – Kosher/non-stun (shechitauk.org)
+
+HMC Outlets:
+  WordPress REST API — custom post type 'outlets'
+  Individual outlet pages live at halalhmc.org/outlets/{slug}/
+  so WordPress exposes them at /wp-json/wp/v2/outlets?per_page=100
 
 Status codes:
   NON_STUN       – HMC or Shechita certified
@@ -21,6 +26,7 @@ Status codes:
 import csv, io, logging, os, re, sqlite3, time
 from datetime import datetime
 from io import BytesIO
+from html.parser import HTMLParser
 
 import requests
 from bs4 import BeautifulSoup
@@ -39,8 +45,17 @@ FSA_EW_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b
 FSA_NI_CATALOG = "https://data.food.gov.uk/catalog/datasets/dae35822-ca4e-41a2-b2af-b10b6163085a"
 FSS_SCOT_CSV   = "https://www.foodstandards.gov.scot/sites/default/files/2025-12/Approved%20Establishments%20in%20Scotland_0.csv"
 
+POSTCODE_RE = re.compile(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b', re.IGNORECASE)
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def strip_html(html_str: str) -> str:
+    """Strip HTML tags from a string."""
+    if not html_str:
+        return ""
+    return BeautifulSoup(html_str, "html.parser").get_text(" ", strip=True)
+
 
 def pdf_to_text(pdf_bytes: bytes) -> str:
     output = BytesIO()
@@ -104,18 +119,12 @@ def parse_fsa_csv(url: str, country_override: str = "") -> list:
 
 
 def parse_scotland_csv(url: str) -> list:
-    """
-    FSS Scotland CSV has metadata rows before the actual header.
-    We scan for the header row by looking for a row containing 'Approval Number'
-    or an 'AppNo' style column, then parse from there.
-    """
     log.info(f"Downloading Scotland CSV: {url}")
     r = requests.get(url, headers=HEADERS, timeout=60)
     r.raise_for_status()
     content = r.content.decode("utf-8-sig", errors="replace")
     lines   = content.splitlines()
 
-    # Find the header row — it contains a recognisable column name
     header_idx = None
     for i, line in enumerate(lines):
         lower = line.lower()
@@ -127,27 +136,23 @@ def parse_scotland_csv(url: str) -> list:
             break
 
     if header_idx is None:
-        log.warning("Scotland CSV: could not find header row, trying row 0")
+        log.warning("Scotland CSV: could not find header row, using row 0")
         header_idx = 0
 
-    log.info(f"Scotland CSV: using row {header_idx} as header. First few cols: {lines[header_idx][:120]}")
-    clean   = "\n".join(lines[header_idx:])
-    reader  = csv.DictReader(io.StringIO(clean))
-    rows    = []
+    log.info(f"Scotland CSV: header at row {header_idx}: {lines[header_idx][:120]}")
+    reader = csv.DictReader(io.StringIO("\n".join(lines[header_idx:])))
+    rows   = []
 
     for raw in reader:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
-
         is_slaughterhouse = (
             row.get("slaughterhouse","").lower() == "yes"
             or row.get("game_handling_establishment","").lower() == "yes"
-            # Some Scotland CSVs use activity columns only
             or "slaughter" in row.get("all activities approved","").lower()
             or "slaughter" in row.get("all_activities","").lower()
         )
         if not is_slaughterhouse:
             continue
-
         approval = (
             row.get("approval number","")
             or row.get("appno","")
@@ -155,7 +160,6 @@ def parse_scotland_csv(url: str) -> list:
         ).strip().upper()
         if not approval:
             continue
-
         rows.append({
             "approval_number":    approval,
             "name":               row.get("trading name","") or row.get("tradingname",""),
@@ -166,7 +170,7 @@ def parse_scotland_csv(url: str) -> list:
             "postcode":           row.get("post code","") or row.get("postcode",""),
             "country":            "Scotland",
             "activities_raw":     row.get("all activities approved","") or row.get("all_activities",""),
-            "fsa_religious_flag": False,  # Scotland mandates stunning
+            "fsa_religious_flag": False,
         })
 
     log.info(f"Scotland CSV: {len(rows)} slaughterhouses found")
@@ -176,7 +180,6 @@ def parse_scotland_csv(url: str) -> list:
 # ── Certification body scrapers ───────────────────────────────────────────────
 
 def scrape_hmc() -> set:
-    """HMC (non-stun halal only) — certified abattoir list via PDF."""
     log.info("Fetching HMC certified PDF…")
     numbers = set()
     sources = [
@@ -197,15 +200,13 @@ def scrape_hmc() -> set:
 
 
 def scrape_hfa() -> set:
-    """HFA (stunned halal) — try known URL patterns."""
     log.info("Fetching HFA certified list…")
     numbers = set()
-    urls = [
+    for url in [
         "https://halalfoodauthority.com/certified-slaughterhouses/",
         "https://halalfoodauthority.com/certified-companies/",
         "https://www.halalfoodauthority.com/",
-    ]
-    for url in urls:
+    ]:
         try:
             found = fetch_gb_numbers(url)
             if found:
@@ -219,15 +220,13 @@ def scrape_hfa() -> set:
 
 
 def scrape_shechita() -> set:
-    """Shechita UK — Kosher, always non-stun."""
     log.info("Fetching Shechita UK list…")
     numbers = set()
-    urls = [
+    for url in [
         "https://www.shechitauk.org/",
         "https://www.shechitauk.org/about-shechita/",
         "https://www.shechitauk.org/contact/",
-    ]
-    for url in urls:
+    ]:
         try:
             found = fetch_gb_numbers(url)
             if found:
@@ -238,6 +237,225 @@ def scrape_shechita() -> set:
             log.warning(f"Shechita failed {url}: {e}")
     log.info(f"Shechita total: {len(numbers)}")
     return numbers
+
+
+# ── HMC Outlets via WordPress REST API ───────────────────────────────────────
+
+def _classify_outlet_type(name: str) -> str:
+    nl = name.lower()
+    if any(w in nl for w in ["restaurant","kitchen","diner","café","cafe","grill",
+                              "tandoori","biryani","curry","dining","eatery","lounge"]):
+        return "RESTAURANT"
+    if any(w in nl for w in ["takeaway","take away","take-away","kebab","pizza",
+                              "burger","chicken","chippy","fish & chip","fish and chip"]):
+        return "TAKEAWAY"
+    if any(w in nl for w in ["butcher","meat","halal shop","grocery","supermarket",
+                              "cash & carry","food store","deli","butchery"]):
+        return "BUTCHER_SHOP"
+    return "OTHER"
+
+
+def _normalise_postcode(pc: str) -> str:
+    pc = pc.upper().strip()
+    if pc and " " not in pc and len(pc) > 3:
+        pc = pc[:-3].strip() + " " + pc[-3:]
+    return pc
+
+
+def scrape_hmc_outlets_via_api() -> list:
+    """
+    HMC outlets are WordPress custom post type 'outlets'.
+    Individual pages live at /outlets/{slug}/ so WordPress
+    exposes them at /wp-json/wp/v2/outlets?per_page=100&page=N
+    """
+    log.info("Fetching HMC outlets via WordPress REST API…")
+    outlets = []
+    page    = 1
+
+    while True:
+        url = f"https://halalhmc.org/wp-json/wp/v2/outlets?per_page=100&page={page}&_fields=id,title,content,acf,link"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=30)
+            if r.status_code == 400 or r.status_code == 404:
+                log.info(f"WP API outlets: end at page {page} (status {r.status_code})")
+                break
+            r.raise_for_status()
+            items = r.json()
+            if not items:
+                break
+        except Exception as e:
+            log.warning(f"WP API outlets page {page} failed: {e}")
+            break
+
+        for item in items:
+            name = strip_html(item.get("title", {}).get("rendered", ""))
+            if not name:
+                continue
+
+            # Try ACF (Advanced Custom Fields) first — common on HMC-style WP sites
+            acf     = item.get("acf", {}) or {}
+            address = acf.get("address","") or strip_html(item.get("content",{}).get("rendered",""))
+            phone   = acf.get("phone","") or acf.get("telephone","") or ""
+            town    = acf.get("town","") or acf.get("city","") or ""
+            postcode= acf.get("postcode","") or acf.get("post_code","") or ""
+
+            # Extract postcode from address text if not in ACF
+            if not postcode and address:
+                m = POSTCODE_RE.search(address)
+                if m:
+                    postcode = m.group(1)
+
+            postcode = _normalise_postcode(postcode)
+
+            # Extract town from address if not in ACF
+            if not town and postcode and address:
+                pre   = address[:address.upper().find(postcode.replace(" ",""))].strip().rstrip(",")
+                parts = [p.strip() for p in pre.split(",") if p.strip()]
+                town  = parts[-1] if parts else ""
+
+            outlets.append({
+                "name":        name,
+                "address":     address,
+                "town":        town,
+                "postcode":    postcode,
+                "phone":       phone,
+                "outlet_type": _classify_outlet_type(name),
+                "source_url":  item.get("link",""),
+                "latitude":    None,
+                "longitude":   None,
+            })
+
+        log.info(f"WP API outlets page {page}: {len(items)} items, running total {len(outlets)}")
+
+        # Check if there are more pages via headers
+        total_pages = int(r.headers.get("X-WP-TotalPages", 1))
+        if page >= total_pages:
+            break
+        page += 1
+        time.sleep(0.5)
+
+    log.info(f"WP API outlets: {len(outlets)} total")
+    return outlets
+
+
+def scrape_hmc_outlets_fallback() -> list:
+    """
+    Fallback: try the 'posts' endpoint filtered to 'outlets' category,
+    or try custom post type name variants.
+    """
+    log.info("Trying WP API fallback post type names…")
+
+    for post_type in ["outlet", "shop", "shops", "certified-outlet", "hmc_outlet"]:
+        url = f"https://halalhmc.org/wp-json/wp/v2/{post_type}?per_page=1"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                log.info(f"Found working post type: {post_type}")
+                # Now scrape all pages of this post type
+                outlets = []
+                page = 1
+                while True:
+                    r2 = requests.get(
+                        f"https://halalhmc.org/wp-json/wp/v2/{post_type}?per_page=100&page={page}&_fields=id,title,content,acf,link",
+                        headers=HEADERS, timeout=30
+                    )
+                    if r2.status_code in (400, 404):
+                        break
+                    items = r2.json()
+                    if not items:
+                        break
+                    for item in items:
+                        name = strip_html(item.get("title", {}).get("rendered", ""))
+                        if not name:
+                            continue
+                        acf      = item.get("acf", {}) or {}
+                        address  = acf.get("address","") or strip_html(item.get("content",{}).get("rendered",""))
+                        phone    = acf.get("phone","") or ""
+                        town     = acf.get("town","") or ""
+                        postcode = acf.get("postcode","") or ""
+                        if not postcode and address:
+                            m = POSTCODE_RE.search(address)
+                            if m:
+                                postcode = m.group(1)
+                        postcode = _normalise_postcode(postcode)
+                        outlets.append({
+                            "name":        name,
+                            "address":     address,
+                            "town":        town,
+                            "postcode":    postcode,
+                            "phone":       phone,
+                            "outlet_type": _classify_outlet_type(name),
+                            "source_url":  item.get("link",""),
+                            "latitude":    None,
+                            "longitude":   None,
+                        })
+                    total_pages = int(r2.headers.get("X-WP-TotalPages", 1))
+                    if page >= total_pages:
+                        break
+                    page += 1
+                    time.sleep(0.5)
+                log.info(f"Fallback post type '{post_type}': {len(outlets)} outlets")
+                return outlets
+            time.sleep(0.3)
+        except Exception as e:
+            log.warning(f"Fallback {post_type}: {e}")
+
+    log.warning("All WP API fallbacks failed — no outlet data")
+    return []
+
+
+def geocode_outlets(outlets: list) -> list:
+    """Geocode postcodes via postcodes.io bulk API (free, no key)."""
+    if not outlets:
+        return outlets
+    log.info("Geocoding outlet postcodes via postcodes.io…")
+    to_geocode = list({o["postcode"] for o in outlets if o["postcode"]})
+    log.info(f"Unique postcodes to geocode: {len(to_geocode)}")
+    pc_coords: dict = {}
+    BATCH = 100
+    for i in range(0, len(to_geocode), BATCH):
+        batch = to_geocode[i:i + BATCH]
+        try:
+            resp = requests.post(
+                "https://api.postcodes.io/postcodes",
+                json={"postcodes": batch},
+                headers={"Content-Type": "application/json"},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            for item in resp.json().get("result", []):
+                query  = item.get("query", "")
+                result = item.get("result")
+                if result:
+                    pc_coords[query.upper().replace(" ", "")] = (result["latitude"], result["longitude"])
+        except Exception as e:
+            log.warning(f"Geocoding batch {i//BATCH + 1} failed: {e}")
+        time.sleep(0.3)
+    matched = 0
+    for o in outlets:
+        key = o["postcode"].upper().replace(" ", "") if o["postcode"] else ""
+        if key in pc_coords:
+            o["latitude"], o["longitude"] = pc_coords[key]
+            matched += 1
+    log.info(f"Geocoding: {matched}/{len(outlets)} outlets have coordinates")
+    return outlets
+
+
+def upsert_outlets(con: sqlite3.Connection, outlets: list):
+    now = datetime.utcnow().isoformat()
+    con.execute("DELETE FROM hmc_outlets")
+    for o in outlets:
+        con.execute("""
+            INSERT INTO hmc_outlets
+              (name, address, town, postcode, phone, outlet_type,
+               source_url, latitude, longitude, last_updated)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (o["name"], o["address"], o["town"], o["postcode"],
+              o["phone"], o["outlet_type"], o["source_url"],
+              o["latitude"], o["longitude"], now))
+    con.commit()
+    geocoded = sum(1 for o in outlets if o["latitude"])
+    log.info(f"hmc_outlets: {len(outlets)} records, {geocoded} geocoded.")
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -293,10 +511,7 @@ def classify(row, hmc, hfa, shechita):
     in_hfa      = n in hfa
     in_shechita = n in shechita
     if in_hmc or in_shechita:
-        bodies = ",".join(filter(None, [
-            "HMC"      if in_hmc      else "",
-            "Shechita" if in_shechita else "",
-        ]))
+        bodies = ",".join(filter(None, ["HMC" if in_hmc else "", "Shechita" if in_shechita else ""]))
         return "NON_STUN", bodies
     if in_hfa:
         return "STUN_RELIGIOUS", "HFA"
@@ -331,13 +546,7 @@ def upsert(con, rows, hmc, hfa, shechita):
         VALUES (?,?,?,?,?,?)
     """, (now,len(rows),counts["NON_STUN"],counts["STUN_RELIGIOUS"],counts["MIXED"],counts["STANDARD"]))
     con.commit()
-    log.info(
-        f"DB updated — "
-        f"NON_STUN={counts['NON_STUN']} "
-        f"STUN_RELIGIOUS={counts['STUN_RELIGIOUS']} "
-        f"MIXED={counts['MIXED']} "
-        f"STANDARD={counts['STANDARD']}"
-    )
+    log.info(f"DB updated — NON_STUN={counts['NON_STUN']} STUN_RELIGIOUS={counts['STUN_RELIGIOUS']} MIXED={counts['MIXED']} STANDARD={counts['STANDARD']}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -348,8 +557,7 @@ def run():
 
     # England & Wales
     try:
-        ew_url  = get_latest_csv_from_fsa_catalog(FSA_EW_CATALOG)
-        ew_rows = parse_fsa_csv(ew_url)
+        ew_rows = parse_fsa_csv(get_latest_csv_from_fsa_catalog(FSA_EW_CATALOG))
         log.info(f"England & Wales: {len(ew_rows)} slaughterhouses")
         all_rows.extend(ew_rows)
     except Exception as e:
@@ -357,27 +565,41 @@ def run():
 
     # Northern Ireland
     try:
-        ni_url  = get_latest_csv_from_fsa_catalog(FSA_NI_CATALOG)
-        ni_rows = parse_fsa_csv(ni_url, country_override="Northern Ireland")
+        ni_rows = parse_fsa_csv(get_latest_csv_from_fsa_catalog(FSA_NI_CATALOG), country_override="Northern Ireland")
         log.info(f"Northern Ireland: {len(ni_rows)} slaughterhouses")
         all_rows.extend(ni_rows)
     except Exception as e:
         log.error(f"Northern Ireland failed: {e}")
 
-    # Scotland — use direct CSV URL as fallback if page scrape fails
+    # Scotland
     try:
         scot_rows = parse_scotland_csv(FSS_SCOT_CSV)
         all_rows.extend(scot_rows)
     except Exception as e:
         log.error(f"Scotland failed: {e}")
 
-    log.info(f"Total across all regions: {len(all_rows)} slaughterhouses")
+    log.info(f"Total: {len(all_rows)} slaughterhouses")
 
     # Certification bodies
     hmc      = scrape_hmc()
     hfa      = scrape_hfa()
     shechita = scrape_shechita()
     upsert(con, all_rows, hmc, hfa, shechita)
+
+    # HMC Outlets — try WP REST API, then fallback post type variants
+    try:
+        outlets = scrape_hmc_outlets_via_api()
+        if not outlets:
+            log.info("Primary WP API endpoint returned nothing, trying fallbacks…")
+            outlets = scrape_hmc_outlets_fallback()
+        if outlets:
+            outlets = geocode_outlets(outlets)
+            upsert_outlets(con, outlets)
+        else:
+            log.warning("No outlet data retrieved — hmc_outlets table will be empty")
+    except Exception as e:
+        log.error(f"HMC outlets failed: {e}")
+
     con.close()
     log.info("Scrape complete.")
 
