@@ -74,6 +74,36 @@
     }
     .td-muted { color: var(--muted); }
     .no-data { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); padding: 1rem 0.9rem; }
+    .data-caveat {
+      background: var(--amber-bg); border: 1px solid var(--amber-border);
+      border-left: 4px solid var(--amber); border-radius: 6px;
+      padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+      font-size: 0.85rem; color: var(--ink-soft); line-height: 1.7;
+    }
+    .data-caveat strong { color: var(--ink); }
+    .data-caveat a { color: var(--ink); font-weight: 600; }
+    .data-caveat ul { margin: 0.5rem 0 0 1.25rem; }
+    .data-caveat li { margin-bottom: 0.3rem; }
+    .contribute-box {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
+      background: var(--paper2); border: 1px solid var(--line);
+      border-radius: 8px; padding: 1.75rem;
+    }
+    .contribute-col h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .contribute-col ul { margin: 0 0 0 1.2rem; font-size: 0.85rem; color: var(--muted); line-height: 1.8; }
+    .contribute-col p { font-size: 0.85rem; color: var(--muted); line-height: 1.7; margin-bottom: 0.75rem; }
+    .contribute-btn {
+      display: inline-block; font-family: var(--mono); font-size: 0.78rem;
+      font-weight: 600; letter-spacing: 0.06em;
+      background: var(--ink); color: var(--paper);
+      padding: 0.75rem 1.25rem; border-radius: 4px;
+      text-decoration: none; margin-top: 0.5rem;
+      transition: opacity 0.15s;
+    }
+    .contribute-btn:hover { opacity: 0.8; color: var(--paper); }
+    @media (max-width: 600px) {
+      .contribute-box { grid-template-columns: 1fr; gap: 1.25rem; }
+    }
 
     .search-filter {
       font-family: var(--mono); font-size: 0.8rem;
@@ -145,6 +175,22 @@
         for non-stun halal slaughter. Animals are not stunned before killing.
         Source: HMC certified supplier PDF, cross-referenced against FSA approval numbers.
       </p>
+      <div class="data-caveat">
+        <strong>⚠️ This is a confirmed minimum, not the full picture.</strong>
+        The FSA's own
+        <a href="https://www.gov.uk/government/publications/farm-animals-slaughter-sector-survey-2024" target="_blank" rel="noopener">2024 Slaughter Sector Survey</a>
+        identified approximately <strong>24 red meat abattoirs</strong> carrying out non-stun
+        slaughter in England and Wales alone — meaning at least 11 non-stun sites are not
+        captured here. Additional non-stun poultry sites exist beyond that.
+        The gap exists because:
+        <ul>
+          <li>Not all non-stun halal operations use HMC — some use smaller or informal certification bodies with no public lists</li>
+          <li>All Kosher (Shechita) sites are non-stun but KLBD do not publish FSA approval codes</li>
+          <li>The FSA has withheld per-abattoir non-stun data in response to FOI requests</li>
+        </ul>
+        We have written to the HFA and KLBD requesting their certified abattoir lists.
+        This figure will be updated if they respond.
+      </div>
       <input class="search-filter" type="text" placeholder="Filter by name, town or code…" oninput="filterTable('nonstun-table', this.value)"/>
       <div class="data-table-wrap">
         <table id="nonstun-table">
@@ -262,6 +308,42 @@
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- ── CONTRIBUTE ──────────────────────────────────────────────────── -->
+    <section class="data-section">
+      <div class="data-section-head">
+        <span class="data-section-badge" style="background:#f0f0f0;color:#333;border:1px solid #ddd;">📬 Help Us Improve</span>
+      </div>
+      <p class="data-section-desc">
+        This dataset is constantly updated as new information becomes available.
+        We cross-reference public sources monthly — but the full picture requires
+        information that certification bodies and the FSA currently withhold.
+      </p>
+      <div class="contribute-box">
+        <div class="contribute-col">
+          <h3>What we're missing</h3>
+          <ul>
+            <li>Non-HMC certified non-stun halal sites</li>
+            <li>Kosher (Shechita) certified abattoirs with FSA codes</li>
+            <li>Smaller regional certification body lists</li>
+            <li>Sites that have changed their slaughter method</li>
+            <li>Scotland and NI religious slaughter data</li>
+          </ul>
+        </div>
+        <div class="contribute-col">
+          <h3>How to submit data</h3>
+          <p>
+            If you have information that would improve this dataset — an abattoir's
+            FSA code and its slaughter method, a certification body list, or a
+            correction to existing data — please get in touch.
+          </p>
+          <p>All submissions are reviewed before being added.</p>
+          <a href="mailto:data@checkmymeat.co.uk" class="contribute-btn">
+            📧 Submit data or a correction
+          </a>
+        </div>
       </div>
     </section>
 
