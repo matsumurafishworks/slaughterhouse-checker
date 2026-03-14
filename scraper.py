@@ -72,19 +72,34 @@ def get_latest_csv_from_fsa_catalog(catalog_url: str) -> str:
 
 
 def get_latest_fss_scotland_csv() -> str:
-    """Scrape the FSS Scotland page for their latest CSV download link."""
-    r = requests.get(FSS_SCOT_PAGE, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.endswith(".csv") and "foodstandards.gov.scot" in href:
-            return href
-        # Sometimes relative URL
-        if href.endswith(".csv") and "approved" in href.lower():
-            return "https://www.foodstandards.gov.scot" + href if href.startswith("/") else href
-    # Fallback to known stable URL pattern
-    return "https://www.foodstandards.gov.scot/sites/default/files/2025-12/Approved%20Establishments%20in%20Scotland_0.csv"
+    """
+    FSS Scotland publish their CSV at a stable URL that always points to the latest version.
+    We try the stable URL first, then fall back to scraping the page.
+    """
+    stable_url = "https://www.foodstandards.gov.scot/downloads/Approved_establishments_in_Scotland.csv"
+    try:
+        r = requests.head(stable_url, headers=HEADERS, timeout=10)
+        if r.status_code == 200:
+            return stable_url
+    except Exception:
+        pass
+
+    # Fallback: scrape the page for a CSV link
+    try:
+        r = requests.get(FSS_SCOT_PAGE, headers=HEADERS, timeout=30)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if ".csv" in href.lower() and "approved" in href.lower():
+                if href.startswith("http"):
+                    return href
+                return "https://www.foodstandards.gov.scot" + href
+    except Exception as e:
+        log.warning(f"Scotland page scrape failed: {e}")
+
+    # Last resort fallback
+    return stable_url
 
 
 # ── FSA CSV parser (England & Wales + Northern Ireland share same format) ─────
@@ -137,7 +152,8 @@ def parse_scotland_csv(url: str) -> list:
     """
     FSS Scotland CSV has a 4-row preamble before the actual header row.
     Columns: Approval Number, Trading Name, Address 1-4, Post Code,
-             All Activities Approved, Slaughterhouse (Yes/blank), ...
+             All Activities Approved, Part A Section I (meat ungulates), etc.
+    Scotland has NO dedicated Slaughterhouse column — filter by activities text.
     Scotland requires all animals to be stunned, so fsa_religious_flag=False always.
     """
     log.info(f"Downloading Scotland CSV: {url}")
@@ -145,27 +161,55 @@ def parse_scotland_csv(url: str) -> list:
     r.raise_for_status()
     content = r.content.decode("utf-8-sig", errors="replace")
 
-    # Skip the 4-row preamble — find the real header row
+    # Skip preamble rows — find the real header (contains "Approval Number")
     lines = content.splitlines()
     header_idx = 0
     for i, line in enumerate(lines):
-        if "approval number" in line.lower() or "tradingname" in line.lower() or "trading name" in line.lower():
+        if "approval number" in line.lower() or "trading name" in line.lower():
             header_idx = i
             break
 
     clean_content = "\n".join(lines[header_idx:])
     reader = csv.DictReader(io.StringIO(clean_content))
 
+    # Scotland activity keywords that indicate a slaughterhouse
+    scot_slaughter_keywords = [
+        "slaughterhouse", "slaughter house", "red meat slaughter",
+        "poultry slaughter", "game handling", "farmed game",
+        "section i", "section ii", "section iii", "section iv",
+    ]
+
     rows = []
     for raw in reader:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
-        # Scotland CSV uses "Slaughterhouse" column same as FSA
-        if row.get("slaughterhouse","").lower() != "yes" and \
-           row.get("game_handling_establishment","").lower() != "yes":
+
+        # Use activities text to identify slaughterhouses
+        activities = (
+            row.get("all activities approved","") + " " +
+            row.get("part a - section i - meat of domestic ungulates","") + " " +
+            row.get("part a - section ii - meat from poultry and lagomorphs","") + " " +
+            row.get("part a - section iii - meat of farmed game","") + " " +
+            row.get("part a - section iv - wild game meat","")
+        ).lower()
+
+        is_slaughterhouse = any(kw in activities for kw in scot_slaughter_keywords)
+
+        # Also check if any Section I-IV columns have a value (Yes/SH/etc)
+        meat_sections = [
+            row.get("part a - section i - meat of domestic ungulates",""),
+            row.get("part a - section ii - meat from poultry and lagomorphs",""),
+            row.get("part a - section iii - meat of farmed game",""),
+            row.get("part a - section iv - wild game meat",""),
+        ]
+        has_meat_section = any(v.strip() for v in meat_sections)
+
+        if not is_slaughterhouse and not has_meat_section:
             continue
+
         approval = (row.get("approval number") or row.get("appno","")).strip().upper()
         if not approval:
             continue
+
         rows.append({
             "approval_number":    approval,
             "name":               row.get("trading name") or row.get("tradingname",""),
@@ -175,7 +219,7 @@ def parse_scotland_csv(url: str) -> list:
             "county":             row.get("address 4") or row.get("county",""),
             "postcode":           row.get("post code") or row.get("postcode",""),
             "country":            "Scotland",
-            "activities_raw":     row.get("all activities approved") or row.get("all_activities",""),
+            "activities_raw":     row.get("all activities approved",""),
             "fsa_religious_flag": False,  # Scotland mandates stunning
         })
     return rows
