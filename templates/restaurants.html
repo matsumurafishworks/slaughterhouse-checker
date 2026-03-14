@@ -3,94 +3,246 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Non-Stun Certified Restaurants &amp; Outlets — CheckMyMeat.co.uk</title>
-  <meta name="description" content="Find UK restaurants, takeaways and butchers certified by HMC — confirmed to serve non-stun meat. Search by postcode."/>
+  <title>Restaurants &amp; Outlets — CheckMyMeat.co.uk</title>
+  <meta name="description" content="Find UK restaurants, takeaways and butchers certified by HMC — confirmed to serve non-stun meat."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
   <style>
-    /* ── Page-level overrides ───────────────────────────────────────── */
-    .r-hero { background: var(--bg-alt); border-bottom: 1px solid var(--border); padding: 3rem 1.5rem 2rem; }
-    .r-hero-inner { max-width: 860px; margin: 0 auto; }
-    .r-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem; }
-    .r-title { font-family: var(--font-display); font-size: clamp(1.8rem,4vw,2.6rem); font-weight: 900; margin: 0 0 0.75rem; line-height: 1.15; }
-    .r-lead { font-size: 1rem; color: var(--text-muted); max-width: 660px; line-height: 1.65; margin-bottom: 1.5rem; }
-    .r-caveat { background: var(--bg); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; padding: 1rem 1.25rem; font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; max-width: 660px; }
-    .r-caveat strong { color: var(--text); }
-
-    /* ── Stats ─────────────────────────────────────────────────────── */
-    .r-stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-    .r-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 1.1rem; }
-    .r-stat-n { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 600; color: var(--accent); display: block; }
-    .r-stat-label { font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-
-    /* ── Search panel ───────────────────────────────────────────────── */
-    .r-search { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem; }
-
-    .r-mode-tabs { display: flex; gap: 0; margin-bottom: 1.25rem; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
-    .r-mode-tab { padding: 0.55rem 1.25rem; font-size: 0.85rem; font-family: var(--font-mono); cursor: pointer; background: var(--bg); color: var(--text-muted); border: none; border-right: 1px solid var(--border); transition: all 0.15s; }
-    .r-mode-tab:last-child { border-right: none; }
-    .r-mode-tab.active { background: var(--accent); color: #fff; }
-
-    .r-postcode-form { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem; }
-    .r-field { display: flex; flex-direction: column; gap: 0.3rem; }
-    .r-field label { font-size: 0.78rem; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-    .r-field input, .r-field select {
-      padding: 0.55rem 0.9rem;
-      font-size: 0.95rem;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      font-family: var(--font-mono);
+    /* ── Page-specific styles using existing CSS variables ── */
+    .r-stats {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin: 1.5rem 0 0;
+      padding-top: 1.25rem;
+      border-top: 1px solid rgba(255,255,255,0.08);
     }
-    .r-field input::placeholder { color: var(--text-muted); opacity: 0.6; }
-    .r-field input:focus, .r-field select:focus { outline: none; border-color: var(--accent); }
-    .r-field select option { background: #1a1a1a; }
-    .r-postcode-form input#pc { width: 140px; text-transform: uppercase; }
-    .r-postcode-form select#radius { width: 120px; }
-    .r-postcode-form select#type-near { width: 160px; }
+    .r-stat {
+      flex: 1 1 120px;
+    }
+    .r-stat-n {
+      display: block;
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #f87171;
+    }
+    .r-stat-label {
+      font-size: 0.72rem;
+      color: #666;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
 
-    .r-text-form { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    .r-text-form input { flex: 1; min-width: 200px; padding: 0.55rem 0.9rem; font-size: 0.95rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; }
-    .r-text-form input::placeholder { color: var(--text-muted); opacity: 0.6; }
-    .r-text-form input:focus { outline: none; border-color: var(--accent); }
-    .r-text-form select { padding: 0.55rem 0.9rem; font-size: 0.88rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-mono); }
+    /* ── Search panel ── */
+    .r-search {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+    .r-mode-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      width: fit-content;
+    }
+    .r-mode-tab {
+      padding: 0.55rem 1.25rem;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      background: var(--paper);
+      color: var(--muted);
+      border: none;
+      border-right: 1px solid var(--line);
+      transition: all 0.15s;
+    }
+    .r-mode-tab:last-child { border-right: none; }
+    .r-mode-tab.active { background: var(--ink); color: var(--paper); }
 
-    .r-btn { padding: 0.55rem 1.25rem; font-size: 0.9rem; font-family: var(--font-mono); background: var(--accent); border: none; border-radius: 6px; color: #fff; cursor: pointer; transition: opacity 0.15s; align-self: flex-end; }
-    .r-btn:hover { opacity: 0.85; }
-    .r-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .r-form-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+    }
+    .r-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .r-field label {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .r-field input, .r-field select {
+      padding: 0.6rem 0.9rem;
+      font-size: 0.88rem;
+      font-family: var(--mono);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .r-field input:focus, .r-field select:focus { border-color: var(--ink); }
+    .r-field input::placeholder { color: var(--muted); }
+    #pc { width: 140px; text-transform: uppercase; }
+    #radius { width: 120px; }
+    #type-near, #type-text { width: 160px; }
+    .r-text-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.88rem;
+      font-family: var(--sans);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .r-text-input:focus { border-color: var(--ink); }
+    .r-text-input::placeholder { color: var(--muted); }
 
-    /* ── Results ────────────────────────────────────────────────────── */
-    .r-info { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem; font-family: var(--font-mono); min-height: 1.2em; }
-    .r-error { font-size: 0.88rem; color: #d47a7a; font-family: var(--font-mono); margin-bottom: 0.75rem; }
+    .r-btn {
+      padding: 0.6rem 1.4rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s;
+      align-self: flex-end;
+    }
+    .r-btn:hover { background: #991b1b; }
 
-    .r-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    .r-table th { background: var(--bg-alt); text-align: left; padding: 0.6rem 0.9rem; font-size: 0.73rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-weight: 500; }
-    .r-table td { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-    .r-table tr:hover td { background: var(--bg-alt); }
-    .o-name { font-weight: 600; line-height: 1.3; }
-    .o-addr { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.2rem; }
-    .o-phone { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); }
-    .o-dist { font-family: var(--font-mono); font-size: 0.85rem; color: var(--accent); white-space: nowrap; }
+    /* ── Results ── */
+    .r-info {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      min-height: 1.2em;
+      letter-spacing: 0.04em;
+    }
+    .r-error {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: var(--red);
+      margin-bottom: 0.75rem;
+    }
 
-    .badge-o { display: inline-block; padding: 0.18rem 0.5rem; border-radius: 20px; font-size: 0.7rem; font-family: var(--font-mono); font-weight: 500; }
-    .badge-RESTAURANT   { background: #1e3320; color: #7ecb85; }
-    .badge-TAKEAWAY     { background: #33280f; color: #d4963a; }
-    .badge-BUTCHER_SHOP { background: #331515; color: #d47a7a; }
-    .badge-OTHER        { background: #1e1e33; color: #9a9ac8; }
+    .r-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .r-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .r-table th {
+      background: var(--paper2);
+      text-align: left;
+      padding: 0.6rem 0.9rem;
+      font-family: var(--mono);
+      font-size: 0.63rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 2px solid var(--line);
+      white-space: nowrap;
+    }
+    .r-table td {
+      padding: 0.65rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .r-table tr:last-child td { border-bottom: none; }
+    .r-table tr:hover td { background: var(--paper2); }
 
-    .r-more-wrap { text-align: center; padding: 1.25rem 0 2.5rem; }
-    .r-more-btn { padding: 0.6rem 1.5rem; font-size: 0.88rem; font-family: var(--font-mono); border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; }
-    .r-more-btn:hover { background: var(--bg-alt); border-color: var(--accent); }
-    .r-more-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .o-name { font-weight: 600; font-size: 0.88rem; }
+    .o-addr { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; font-family: var(--mono); }
+    .o-dist { font-family: var(--mono); font-size: 0.82rem; color: var(--red); white-space: nowrap; font-weight: 600; }
 
-    .r-empty { text-align: center; padding: 3rem; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.88rem; }
+    .o-badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      border: 1px solid;
+    }
+    .o-badge-RESTAURANT   { background: var(--green-bg);   color: var(--green);  border-color: var(--green-border); }
+    .o-badge-TAKEAWAY     { background: var(--amber-bg);   color: var(--amber);  border-color: var(--amber-border); }
+    .o-badge-BUTCHER_SHOP { background: var(--red-bg);     color: var(--red);    border-color: var(--red-border); }
+    .o-badge-OTHER        { background: var(--paper2);     color: var(--muted);  border-color: var(--line); }
+
+    .r-empty {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+    .r-more-wrap { text-align: center; padding: 1.5rem 0; }
+    .r-more-btn {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.6rem 1.4rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      color: var(--ink);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .r-more-btn:hover { border-color: var(--ink); }
+
+    /* ── Notice box (no data yet) ── */
+    .r-notice {
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      font-size: 0.88rem;
+      color: var(--amber);
+      line-height: 1.65;
+      margin-bottom: 2rem;
+    }
+    .r-notice strong { color: var(--amber); }
 
     @media (max-width: 600px) {
       .r-table th:nth-child(3), .r-table td:nth-child(3) { display: none; }
-    }
-    @media (max-width: 480px) {
       .r-table th:nth-child(4), .r-table td:nth-child(4) { display: none; }
     }
   </style>
@@ -99,7 +251,7 @@
 
 <nav class="nav">
   <div class="nav-inner">
-    <a href="/" class="nav-logo">CheckMyMeat.co.uk</a>
+    <a href="/" class="nav-logo">Check My Meat</a>
     <div class="nav-links">
       <a href="/"            class="nav-link">Abattoirs</a>
       <a href="/restaurants" class="nav-link active">Restaurants</a>
@@ -109,17 +261,18 @@
   </div>
 </nav>
 
-<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
-<header class="r-hero">
-  <div class="r-hero-inner">
-    <p class="r-eyebrow">Confirmed Non-Stun Certified</p>
-    <h1 class="r-title">Restaurants &amp; Outlets<br>Using Non-Stun Meat</h1>
-    <p class="r-lead">
+<header class="why-hero">
+  <div class="masthead-inner">
+    <p class="masthead-eyebrow">Confirmed Non-Stun Certified</p>
+    <h1 class="masthead-title" style="font-size: clamp(1.8rem,4.5vw,3rem);">
+      Restaurants &amp; Outlets<br>
+      <em>Using Non-Stun Meat</em>
+    </h1>
+    <p class="masthead-sub">
       Every establishment here is certified by the <strong>Halal Monitoring Committee (HMC)</strong>,
-      which certifies <em>non-stun slaughter only</em> and traces the supply chain
-      from abattoir to plate. If it's HMC-certified, the meat is non-stun.
+      which certifies <em>non-stun slaughter only</em> and traces the supply chain from abattoir to plate.
+      If it's HMC-certified, the meat is non-stun.
     </p>
-
     <div class="r-stats">
       <div class="r-stat">
         <span class="r-stat-n">{{ total }}</span>
@@ -137,40 +290,32 @@
         <span class="r-stat-n">{{ counts.get('BUTCHER_SHOP', 0) }}</span>
         <span class="r-stat-label">Butchers &amp; Shops</span>
       </div>
-      <div class="r-stat">
-        <span class="r-stat-n">{{ geocoded }}</span>
-        <span class="r-stat-label">With Location Data</span>
-      </div>
-    </div>
-
-    <div class="r-caveat">
-      <strong>What this means:</strong> HMC inspects these establishments and verifies
-      their meat comes from HMC-certified non-stun abattoirs. This is the most direct
-      confirmation available that a food outlet uses non-stun meat.
-      <br><br>
-      <strong>What this doesn't cover:</strong> Outlets certified by other bodies (HFA, etc.)
-      — those may use stunned or non-stun meat depending on their supplier. Only HMC
-      guarantees non-stun throughout the chain.
-      Data updated: {{ last_updated }}.
     </div>
   </div>
 </header>
 
-<!-- ── Search ─────────────────────────────────────────────────────────────── -->
 <div class="r-search">
 
+  {% if total == 0 %}
+  <div class="r-notice">
+    <strong>Outlet data not yet available.</strong> HMC recently rebuilt their website —
+    their certified outlet directory is no longer publicly scrapeable. We have contacted
+    HMC directly to request a data feed. Once we have it, this page will show the full
+    list of HMC-certified restaurants, takeaways and butchers with postcode search.
+    In the meantime, you can search the <a href="https://halalhmc.org/outlets/" target="_blank" rel="noopener" style="color:var(--amber);font-weight:600;">HMC website directly</a>.
+  </div>
+  {% else %}
+
   <div class="r-mode-tabs">
-    <button class="r-mode-tab active" data-mode="postcode" id="tab-postcode">📍 Near me</button>
-    <button class="r-mode-tab"        data-mode="text"     id="tab-text">🔍 Search</button>
+    <button class="r-mode-tab active" data-mode="postcode">📍 Near me</button>
+    <button class="r-mode-tab"        data-mode="text">🔍 Search</button>
   </div>
 
-  <!-- Postcode / radius mode -->
   <div id="mode-postcode">
-    <div class="r-postcode-form">
+    <div class="r-form-row">
       <div class="r-field">
         <label for="pc">Postcode</label>
-        <input id="pc" type="text" placeholder="e.g. E1 6RF" autocomplete="off"
-               autocorrect="off" spellcheck="false" maxlength="8"/>
+        <input id="pc" type="text" placeholder="e.g. E1 6RF" autocomplete="off" spellcheck="false" maxlength="8"/>
       </div>
       <div class="r-field">
         <label for="radius">Within</label>
@@ -197,53 +342,56 @@
     </div>
   </div>
 
-  <!-- Text search mode -->
   <div id="mode-text" hidden>
-    <div class="r-text-form">
-      <input id="q" type="text" placeholder="Search by name, town, postcode…"
-             autocomplete="off" spellcheck="false"/>
-      <select id="type-text">
-        <option value="">All types</option>
-        <option value="RESTAURANT">Restaurants</option>
-        <option value="TAKEAWAY">Takeaways</option>
-        <option value="BUTCHER_SHOP">Butchers</option>
-        <option value="OTHER">Other</option>
-      </select>
+    <div class="r-form-row">
+      <input class="r-text-input" id="q" type="text" placeholder="Search by name, town, postcode…" autocomplete="off" spellcheck="false"/>
+      <div class="r-field">
+        <label for="type-text">Type</label>
+        <select id="type-text">
+          <option value="">All types</option>
+          <option value="RESTAURANT">Restaurants</option>
+          <option value="TAKEAWAY">Takeaways</option>
+          <option value="BUTCHER_SHOP">Butchers</option>
+          <option value="OTHER">Other</option>
+        </select>
+      </div>
     </div>
   </div>
 
   <div class="r-error" id="r-error" hidden></div>
   <div class="r-info"  id="r-info"></div>
 
-  <table class="r-table">
-    <thead>
-      <tr>
-        <th>Name &amp; Address</th>
-        <th>Town</th>
-        <th>Phone</th>
-        <th>Type</th>
-        <th id="dist-header" hidden>Distance</th>
-      </tr>
-    </thead>
-    <tbody id="r-tbody">
-      <tr><td colspan="5" class="r-empty">Enter a postcode to find nearby outlets, or switch to Search.</td></tr>
-    </tbody>
-  </table>
+  <div class="r-table-wrap">
+    <table class="r-table">
+      <thead>
+        <tr>
+          <th>Name &amp; Address</th>
+          <th>Town</th>
+          <th>Type</th>
+          <th id="dist-header" hidden>Distance</th>
+        </tr>
+      </thead>
+      <tbody id="r-tbody">
+        <tr><td colspan="4" class="r-empty">Enter a postcode to find nearby outlets, or switch to Search.</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <div class="r-more-wrap">
-    <button class="r-more-btn" id="r-more" hidden disabled>Load more</button>
+    <button class="r-more-btn" id="r-more" hidden>Load more</button>
   </div>
+
+  {% endif %}
 
 </div>
 
-<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-sources">
       <p class="footer-heading">Source</p>
       <ul>
         <li><a href="https://halalhmc.org/outlets/" target="_blank" rel="noopener">HMC Certified Outlets — halalhmc.org</a></li>
-        <li>Location data: <a href="https://postcodes.io" target="_blank" rel="noopener">postcodes.io</a> (free, Open Government Licence)</li>
+        <li><a href="https://postcodes.io" target="_blank" rel="noopener">Location data: postcodes.io (Open Government Licence)</a></li>
       </ul>
     </div>
     <div class="footer-right">
@@ -253,198 +401,99 @@
   </div>
 </footer>
 
+{% if total > 0 %}
 <script>
-const BADGE_LABELS = {
-  RESTAURANT:   'Restaurant',
-  TAKEAWAY:     'Takeaway',
-  BUTCHER_SHOP: 'Butcher/Shop',
-  OTHER:        'Other',
-};
+const BADGE_LABELS = { RESTAURANT:'Restaurant', TAKEAWAY:'Takeaway', BUTCHER_SHOP:'Butcher/Shop', OTHER:'Other' };
 const LIMIT = 50;
+let mode = 'postcode', textOffset = 0, textTotal = 0;
 
-// State
-let mode          = 'postcode'; // 'postcode' | 'text'
-let textOffset    = 0;
-let textTotal     = 0;
-
-// Elements
 const tbody      = document.getElementById('r-tbody');
 const info       = document.getElementById('r-info');
 const errEl      = document.getElementById('r-error');
 const moreBtn    = document.getElementById('r-more');
 const distHeader = document.getElementById('dist-header');
 
-function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function showError(msg) {
-  errEl.textContent = msg;
-  errEl.hidden      = false;
-}
-function clearError() { errEl.hidden = true; errEl.textContent = ''; }
-
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showError(msg) { errEl.textContent = msg; errEl.hidden = false; }
+function clearError() { errEl.hidden = true; }
 function setInfo(msg) { info.textContent = msg; }
 
 function renderRows(results, append, showDist) {
   if (!append) tbody.innerHTML = '';
   distHeader.hidden = !showDist;
-
-  if (results.length === 0 && !append) {
-    tbody.innerHTML = `<tr><td colspan="5" class="r-empty">No outlets found.</td></tr>`;
+  if (!results.length && !append) {
+    tbody.innerHTML = `<tr><td colspan="4" class="r-empty">No outlets found.</td></tr>`;
     return;
   }
-
   results.forEach(r => {
     const tr = document.createElement('tr');
-    const distCell = showDist
-      ? `<td class="o-dist">${esc(r.distance_miles)} mi</td>`
-      : `<td></td>`;
     tr.innerHTML = `
-      <td>
-        <div class="o-name">${esc(r.name)}</div>
-        <div class="o-addr">${esc(r.address)}</div>
-      </td>
+      <td><div class="o-name">${esc(r.name)}</div><div class="o-addr">${esc(r.address)}</div></td>
       <td><div class="o-addr">${esc(r.town)}</div></td>
-      <td><div class="o-phone">${esc(r.phone)}</div></td>
-      <td><span class="badge-o badge-${esc(r.outlet_type)}">${esc(BADGE_LABELS[r.outlet_type] || r.outlet_type)}</span></td>
-      ${distCell}
-    `;
+      <td><span class="o-badge o-badge-${esc(r.outlet_type)}">${esc(BADGE_LABELS[r.outlet_type]||r.outlet_type)}</span></td>
+      <td>${showDist ? `<span class="o-dist">${esc(r.distance_miles)} mi</span>` : ''}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-// ── Postcode / radius search ─────────────────────────────────────────────────
-
 async function doNearbySearch() {
-  const pc     = document.getElementById('pc').value.trim();
-  const radius = document.getElementById('radius').value;
-  const type   = document.getElementById('type-near').value;
-
-  if (!pc) {
-    showError('Please enter a postcode.');
-    return;
-  }
-  clearError();
-  setInfo('Searching…');
-  moreBtn.hidden = true;
-
-  const params = new URLSearchParams({ postcode: pc, radius, type });
+  const pc = document.getElementById('pc').value.trim();
+  if (!pc) { showError('Please enter a postcode.'); return; }
+  clearError(); setInfo('Searching…'); moreBtn.hidden = true;
   try {
-    const res  = await fetch('/restaurants/nearby?' + params.toString());
+    const res  = await fetch('/restaurants/nearby?' + new URLSearchParams({ postcode: pc, radius: document.getElementById('radius').value, type: document.getElementById('type-near').value }));
     const data = await res.json();
-
-    if (!res.ok) {
-      showError(data.error || 'Something went wrong.');
-      tbody.innerHTML = `<tr><td colspan="5" class="r-empty">No results.</td></tr>`;
-      setInfo('');
-      return;
-    }
-
+    if (!res.ok) { showError(data.error || 'Something went wrong.'); tbody.innerHTML = `<tr><td colspan="4" class="r-empty">No results.</td></tr>`; setInfo(''); return; }
     renderRows(data.results, false, true);
-    const n = data.total;
-    setInfo(n === 0
-      ? `No HMC certified outlets found within ${radius} miles of ${pc.toUpperCase()}.`
-      : `${n} HMC outlet${n !== 1 ? 's' : ''} within ${radius} miles of ${pc.toUpperCase()}, sorted by distance.`
-    );
-  } catch (e) {
-    showError('Could not reach server. Please try again.');
-    setInfo('');
-  }
+    setInfo(data.total === 0 ? `No outlets within ${document.getElementById('radius').value} miles of ${pc.toUpperCase()}.` : `${data.total} outlet${data.total!==1?'s':''} within ${document.getElementById('radius').value} miles of ${pc.toUpperCase()}, sorted by distance.`);
+  } catch(e) { showError('Could not reach server.'); setInfo(''); }
 }
 
 document.getElementById('btn-nearby').addEventListener('click', doNearbySearch);
 document.getElementById('pc').addEventListener('keydown', e => {
   if (e.key === 'Enter') doNearbySearch();
-  // Auto-uppercase as you type
-  setTimeout(() => {
-    const el = document.getElementById('pc');
-    el.value = el.value.toUpperCase();
-  }, 0);
+  setTimeout(() => { const el = document.getElementById('pc'); el.value = el.value.toUpperCase(); }, 0);
 });
-
-// ── Text search ──────────────────────────────────────────────────────────────
 
 let debounce;
 async function doTextSearch(append = false) {
-  const q    = document.getElementById('q').value.trim();
+  const q = document.getElementById('q').value.trim();
   const type = document.getElementById('type-text').value;
-
   if (!append) { textOffset = 0; textTotal = 0; }
-
   clearError();
-  if (!q && !type) {
-    // Show placeholder until they type
-    tbody.innerHTML = `<tr><td colspan="5" class="r-empty">Start typing to search outlets by name, town or postcode.</td></tr>`;
-    setInfo('');
-    moreBtn.hidden = true;
-    return;
-  }
-
-  const params = new URLSearchParams({ q, type, limit: LIMIT, offset: textOffset });
+  if (!q && !type) { tbody.innerHTML = `<tr><td colspan="4" class="r-empty">Start typing to search outlets.</td></tr>`; setInfo(''); moreBtn.hidden = true; return; }
   try {
-    const res  = await fetch('/restaurants/search?' + params.toString());
+    const res  = await fetch('/restaurants/search?' + new URLSearchParams({ q, type, limit: LIMIT, offset: textOffset }));
     const data = await res.json();
     textTotal  = data.total;
-
     renderRows(data.results, append, false);
-
     const shown = textOffset + data.results.length;
-    setInfo(textTotal === 0
-      ? 'No outlets found.'
-      : `Showing ${shown.toLocaleString()} of ${textTotal.toLocaleString()} outlets`
-    );
-
+    setInfo(textTotal === 0 ? 'No outlets found.' : `Showing ${shown.toLocaleString()} of ${textTotal.toLocaleString()} outlets`);
     const remaining = textTotal - shown;
-    if (remaining > 0) {
-      moreBtn.textContent = `Load ${Math.min(remaining, LIMIT)} more`;
-      moreBtn.hidden      = false;
-      moreBtn.disabled    = false;
-    } else {
-      moreBtn.hidden = true;
-    }
-  } catch (e) {
-    showError('Could not reach server.');
-  }
+    if (remaining > 0) { moreBtn.textContent = `Load ${Math.min(remaining, LIMIT)} more`; moreBtn.hidden = false; }
+    else { moreBtn.hidden = true; }
+  } catch(e) { showError('Could not reach server.'); }
 }
 
-document.getElementById('q').addEventListener('input', () => {
-  clearTimeout(debounce);
-  debounce = setTimeout(() => doTextSearch(false), 300);
-});
+document.getElementById('q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => doTextSearch(false), 300); });
 document.getElementById('type-text').addEventListener('change', () => doTextSearch(false));
-
-moreBtn.addEventListener('click', () => {
-  textOffset += LIMIT;
-  doTextSearch(true);
-});
-
-// ── Mode tabs ────────────────────────────────────────────────────────────────
+moreBtn.addEventListener('click', () => { textOffset += LIMIT; doTextSearch(true); });
 
 document.querySelectorAll('.r-mode-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     mode = btn.dataset.mode;
     document.querySelectorAll('.r-mode-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
     document.getElementById('mode-postcode').hidden = (mode !== 'postcode');
     document.getElementById('mode-text').hidden     = (mode !== 'text');
-    distHeader.hidden = true;
-    moreBtn.hidden    = true;
-    setInfo('');
-    clearError();
-    tbody.innerHTML = `<tr><td colspan="5" class="r-empty">${
-      mode === 'postcode'
-        ? 'Enter a postcode to find nearby outlets.'
-        : 'Start typing to search outlets by name, town or postcode.'
-    }</td></tr>`;
-
-    // Focus relevant input
+    distHeader.hidden = true; moreBtn.hidden = true; setInfo(''); clearError();
+    tbody.innerHTML = `<tr><td colspan="4" class="r-empty">${mode==='postcode'?'Enter a postcode to find nearby outlets.':'Start typing to search outlets.'}</td></tr>`;
     if (mode === 'postcode') document.getElementById('pc').focus();
     else document.getElementById('q').focus();
   });
 });
 </script>
+{% endif %}
 
 </body>
 </html>
