@@ -206,7 +206,9 @@ def parse_scotland_csv(url: str) -> list:
         ]
         has_meat_section = any(v.strip() for v in meat_sections)
 
-        if not is_slaughterhouse and not has_meat_section:
+        is_cutting_plant_scot = row.get("cutting plant","").lower() == "yes"
+
+        if not is_slaughterhouse and not has_meat_section and not is_cutting_plant_scot:
             continue
 
         approval = (row.get("approval number") or row.get("appno","")).strip().upper()
@@ -224,6 +226,7 @@ def parse_scotland_csv(url: str) -> list:
             "country":            "Scotland",
             "activities_raw":     row.get("all activities approved",""),
             "fsa_religious_flag": False,  # Scotland mandates stunning
+            "is_cutting_plant":   is_cutting_plant_scot and not is_slaughterhouse and not has_meat_section,
         })
     return rows
 
@@ -275,19 +278,20 @@ def init_db():
     con = sqlite3.connect(DB_PATH)
     con.executescript("""
         CREATE TABLE IF NOT EXISTS slaughterhouses (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            approval_number  TEXT UNIQUE NOT NULL,
-            name             TEXT,
-            address_line1    TEXT,
-            address_line2    TEXT,
-            town             TEXT,
-            county           TEXT,
-            postcode         TEXT,
-            country          TEXT,
-            activities_raw   TEXT,
-            slaughter_status TEXT NOT NULL DEFAULT 'STANDARD',
-            certified_by     TEXT,
-            last_updated     TEXT
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            approval_number     TEXT UNIQUE NOT NULL,
+            name                TEXT,
+            address_line1       TEXT,
+            address_line2       TEXT,
+            town                TEXT,
+            county              TEXT,
+            postcode            TEXT,
+            country             TEXT,
+            activities_raw      TEXT,
+            slaughter_status    TEXT NOT NULL DEFAULT 'STANDARD',
+            certified_by        TEXT,
+            establishment_type  TEXT NOT NULL DEFAULT 'ABATTOIR',
+            last_updated        TEXT
         );
         CREATE TABLE IF NOT EXISTS scrape_log (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,14 +312,19 @@ def classify(row, hmc, hfa, shechita):
     in_hmc      = n in hmc
     in_hfa      = n in hfa
     in_shechita = n in shechita
+    is_cp       = row.get("is_cutting_plant", False)
+
     if in_hmc or in_shechita:
         bodies = ",".join(filter(None, [
             "HMC"      if in_hmc      else "",
             "Shechita" if in_shechita else "",
         ]))
-        return "NON_STUN", bodies
+        # Cutting plants get PROCESSOR_NON_STUN instead of NON_STUN
+        status = "PROCESSOR_NON_STUN" if is_cp else "NON_STUN"
+        return status, bodies
     if in_hfa:
-        return "STUN_RELIGIOUS", "HFA"
+        status = "PROCESSOR_STUN_RELIGIOUS" if is_cp else "STUN_RELIGIOUS"
+        return status, "HFA"
     if row["fsa_religious_flag"]:
         return "MIXED", ""
     return "STANDARD", ""
@@ -327,21 +336,25 @@ def upsert(con, rows, hmc, hfa, shechita):
     for row in rows:
         status, bodies = classify(row, hmc, hfa, shechita)
         counts[status] += 1
+        est_type = "CUTTING_PLANT" if row.get("is_cutting_plant") else "ABATTOIR"
         con.execute("""
             INSERT INTO slaughterhouses
               (approval_number,name,address_line1,address_line2,town,county,
-               postcode,country,activities_raw,slaughter_status,certified_by,last_updated)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               postcode,country,activities_raw,slaughter_status,certified_by,
+               establishment_type,last_updated)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(approval_number) DO UPDATE SET
               name=excluded.name, address_line1=excluded.address_line1,
               address_line2=excluded.address_line2, town=excluded.town,
               county=excluded.county, postcode=excluded.postcode,
               country=excluded.country, activities_raw=excluded.activities_raw,
               slaughter_status=excluded.slaughter_status,
-              certified_by=excluded.certified_by, last_updated=excluded.last_updated
+              certified_by=excluded.certified_by,
+              establishment_type=excluded.establishment_type,
+              last_updated=excluded.last_updated
         """, (row["approval_number"],row["name"],row["address_line1"],
               row["address_line2"],row["town"],row["county"],row["postcode"],
-              row["country"],row["activities_raw"],status,bodies,now))
+              row["country"],row["activities_raw"],status,bodies,est_type,now))
     con.execute("""
         INSERT INTO scrape_log (run_at,fsa_total,non_stun,stun_religious,mixed,standard)
         VALUES (?,?,?,?,?,?)
