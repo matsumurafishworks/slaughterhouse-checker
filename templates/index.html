@@ -59,6 +59,38 @@
         The number in the middle is the approval code.
       </p>
     </div>
+
+    <!-- ── DATA COVERAGE SUMMARY ─────────────────────────────────────── -->
+    <div class="coverage-bar">
+      <div class="coverage-item">
+        <span class="cov-icon">✅</span>
+        <div>
+          <span class="cov-label" id="stat-total">350</span> UK abattoirs
+          <span class="cov-sub">England, Wales, Scotland &amp; Northern Ireland</span>
+        </div>
+      </div>
+      <div class="coverage-item">
+        <span class="cov-icon">✅</span>
+        <div>
+          <span class="cov-label" id="stat-nonstun">13</span> confirmed non-stun
+          <span class="cov-sub">HMC certified — updated monthly</span>
+        </div>
+      </div>
+      <div class="coverage-item">
+        <span class="cov-icon">⚠️</span>
+        <div>
+          <span class="cov-label">Stunned halal</span> not yet available
+          <span class="cov-sub">HFA do not publish a public list</span>
+        </div>
+      </div>
+      <div class="coverage-item">
+        <span class="cov-icon">⚠️</span>
+        <div>
+          <span class="cov-label">Kosher</span> not yet available
+          <span class="cov-sub">Beth Din bodies do not publish FSA codes</span>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -253,6 +285,16 @@ function esc(s) {
 
 btn.addEventListener('click', check);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+
+// Load live stats
+fetch('/stats').then(r => r.json()).then(data => {
+  if (!data.counts) return;
+  let total = data.counts.reduce((s, r) => s + r.n, 0);
+  let nonStun = (data.counts.find(r => r.slaughter_status === 'NON_STUN') || {n:0}).n;
+  let mixed = (data.counts.find(r => r.slaughter_status === 'MIXED') || {n:0}).n;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-nonstun').textContent = nonStun + (mixed ? ' (+' + mixed + ' unverified)' : '');
+}).catch(() => {});
 </script>
 </body>
 </html>
