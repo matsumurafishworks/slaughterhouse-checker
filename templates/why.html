@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Why? — UK Slaughterhouse Checker</title>
+  <meta name="description" content="Why this tool was built — animal welfare, consumer transparency, and the case for mandatory slaughter method labelling."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">UK Slaughterhouse Checker</a>
+    <div class="nav-links">
+      <a href="/"    class="nav-link">Check</a>
+      <a href="/why" class="nav-link active">Why?</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── WHY HERO ──────────────────────────────────────────────────────────────── -->
+<header class="why-hero">
+  <div class="masthead-inner">
+    <p class="masthead-eyebrow">Our position</p>
+    <h1 class="masthead-title" style="font-size: clamp(2rem,5vw,3.2rem);">
+      Every consumer deserves<br><em>to know how their food was killed.</em>
+    </h1>
+    <p class="masthead-sub">
+      This tool is not anti-religion. It is pro-transparency and pro-animal welfare.
+      It exists because UK law currently allows the method of slaughter to be hidden from
+      consumers — and we think that is wrong.
+    </p>
+  </div>
+</header>
+
+<!-- ── WHY BODY ──────────────────────────────────────────────────────────────── -->
+<main class="why-main">
+  <div class="why-inner">
+
+    <article class="why-section">
+      <h2>The animal welfare case</h2>
+      <p>
+        UK law requires that all animals be <strong>stunned before slaughter</strong> —
+        rendered unconscious so they cannot feel pain during killing. This is considered
+        the gold standard of humane slaughter by the British Veterinary Association,
+        the RSPCA, and the Farm Animal Welfare Council.
+      </p>
+      <p>
+        There is one legal exemption: religious slaughter. Under the
+        <em>Welfare of Animals at the Time of Killing (England) Regulations 2015 (WATOK)</em>,
+        animals may be killed without prior stunning when slaughtered by a Muslim or Jewish
+        slaughterman for the food of Muslims or Jews respectively.
+      </p>
+      <p>
+        Scientific evidence — including a 2012 report by the European Food Safety Authority
+        — indicates that non-stun slaughter (cutting the throat of a fully conscious animal)
+        can result in a period of significant pain and distress before unconsciousness,
+        lasting from several seconds up to over a minute in cattle.
+        <strong>This tool focusses on that specific welfare concern.</strong>
+      </p>
+    </article>
+
+    <article class="why-section">
+      <h2>What methods are covered</h2>
+      <p>This tool covers all forms of religious slaughter, not just Halal:</p>
+      <ul class="why-list">
+        <li>
+          <strong>Halal — non-stun dhabiha</strong>: Certified by the
+          Halal Monitoring Committee (HMC). Animals are not stunned.
+          This is the method associated with the primary welfare concern.
+        </li>
+        <li>
+          <strong>Halal — stunned dhabiha</strong>: Certified by the
+          Halal Food Authority (HFA) and others. Animals <em>are</em> stunned
+          before cutting. The majority of UK halal production (≈88%) uses this method.
+        </li>
+        <li>
+          <strong>Kosher / Shechita</strong>: Jewish religious slaughter is
+          <em>always</em> non-stun. Certified by Shechita UK.
+          There is no Kosher method that permits pre-stunning.
+        </li>
+      </ul>
+      <p>
+        By covering all three, this tool is relevant to anyone concerned about
+        non-stun slaughter — regardless of the religious tradition behind it.
+      </p>
+    </article>
+
+    <article class="why-section">
+      <h2>The transparency gap</h2>
+      <p>
+        There is currently <strong>no legal requirement to label meat</strong>
+        according to the method of slaughter. This means:
+      </p>
+      <ul class="why-list">
+        <li>
+          You can buy chicken in a supermarket with no indication of whether it
+          was stunned or not before killing.
+        </li>
+        <li>
+          Non-stun meat routinely enters the general food supply unlabelled —
+          appearing in school dinners, hospital catering, restaurants and takeaways.
+        </li>
+        <li>
+          The FSA has refused, via multiple Freedom of Information requests,
+          to publish which specific abattoirs use non-stun methods.
+        </li>
+        <li>
+          The Government consulted on slaughter method labelling in 2021 but
+          has not legislated.
+        </li>
+      </ul>
+      <p>
+        This tool cannot fully solve that problem — but it gives you more information
+        than you had before, drawn from the public data that does exist.
+      </p>
+    </article>
+
+    <article class="why-section">
+      <h2>What we are not saying</h2>
+      <p>
+        This is <strong>not</strong> a campaign against any religion.
+        Religious communities have the legal right to practise their dietary laws,
+        and we respect that right.
+      </p>
+      <p>
+        Our argument is simple: <strong>that right does not override a consumer's
+        right to know what they are eating.</strong> Both things can be true simultaneously.
+        Mandatory slaughter method labelling — as exists in several European countries —
+        would allow religious consumers and welfare-conscious consumers alike to make
+        informed choices without restricting anyone's practices.
+      </p>
+      <p>
+        This tool is for:
+      </p>
+      <ul class="why-list">
+        <li>Animal welfare advocates who object to non-stun slaughter on ethical grounds.</li>
+        <li>Muslim consumers who want to verify the specific halal method used.</li>
+        <li>Jewish consumers who want to verify kosher certification.</li>
+        <li>Non-religious consumers who simply want to know what they are eating.</li>
+        <li>Parents trying to understand what is served in their child's school.</li>
+      </ul>
+    </article>
+
+    <article class="why-section">
+      <h2>The data and its limitations</h2>
+      <div class="data-table">
+        <div class="data-row data-header">
+          <span>Source</span><span>Covers</span><span>Licence</span>
+        </div>
+        <div class="data-row">
+          <span>FSA Approved Establishments CSV</span>
+          <span>All approved abattoirs, England &amp; Wales</span>
+          <span>Open Government Licence v3</span>
+        </div>
+        <div class="data-row">
+          <span>Halal Monitoring Committee (HMC)</span>
+          <span>Non-stun halal certification</span>
+          <span>Scraped from public list</span>
+        </div>
+        <div class="data-row">
+          <span>Halal Food Authority (HFA)</span>
+          <span>Stunned halal certification</span>
+          <span>Scraped from public list</span>
+        </div>
+        <div class="data-row">
+          <span>Shechita UK</span>
+          <span>Kosher / non-stun Shechita</span>
+          <span>Scraped from public list</span>
+        </div>
+      </div>
+      <p style="margin-top:1.25rem">
+        <strong>Key limitation:</strong> A "Standard Slaughter" result means no
+        certification was found in public sources — not that stunning is guaranteed.
+        The FSA withholds non-stun data. Abattoirs change practices.
+        Always check labelling and contact the producer if certainty is required.
+      </p>
+      <p>
+        Scotland and Northern Ireland use separate registers (FSS and DAERA respectively)
+        and are not yet covered by this tool.
+      </p>
+    </article>
+
+    <article class="why-section">
+      <h2>What you can do</h2>
+      <ul class="why-list">
+        <li><strong>Write to your MP</strong> demanding mandatory slaughter method labelling on all UK meat.</li>
+        <li><strong>Support the RSPCA</strong> — their campaign calls for compulsory labelling of meat from non-stunned animals.</li>
+        <li><strong>Ask your supermarket</strong> what their slaughter policy is and whether they stock non-stun meat.</li>
+        <li><strong>Ask your child's school</strong> what slaughter method is used in their catering contract.</li>
+        <li><strong>Share this tool</strong> — the more people who use it, the greater the pressure for proper legislation.</li>
+      </ul>
+    </article>
+
+    <div class="why-cta">
+      <a href="/" class="btn-primary">← Use the checker</a>
+    </div>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-sources">
+      <p class="footer-heading">Data sources (updated monthly)</p>
+      <ul>
+        <li><a href="https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3" target="_blank" rel="noopener">FSA Approved Establishments (OGL v3)</a></li>
+        <li><a href="https://halalmc.co.uk" target="_blank" rel="noopener">Halal Monitoring Committee (HMC)</a></li>
+        <li><a href="https://www.halalfoodauthority.com" target="_blank" rel="noopener">Halal Food Authority (HFA)</a></li>
+        <li><a href="https://www.shechitauk.org" target="_blank" rel="noopener">Shechita UK</a></li>
+      </ul>
+    </div>
+    <div class="footer-right">
+      <p>For informational purposes only. Always verify with the producer.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

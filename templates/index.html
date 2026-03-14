@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UK Slaughterhouse Checker — Religious &amp; Non-Stun Slaughter</title>
+  <meta name="description" content="Look up any UK slaughterhouse by FSA approval code to find its religious slaughter and non-stun status. Covers Halal, Kosher, and Shechita."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">UK Slaughterhouse Checker</a>
+    <div class="nav-links">
+      <a href="/"   class="nav-link active">Check</a>
+      <a href="/why" class="nav-link">Why?</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── MASTHEAD ──────────────────────────────────────────────────────────────── -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <p class="masthead-eyebrow">Animal Welfare · Consumer Transparency · Public Data</p>
+    <h1 class="masthead-title">
+      Is your slaughterhouse<br>
+      <em>non-stun certified?</em>
+    </h1>
+    <p class="masthead-sub">
+      Enter a UK FSA abattoir approval code to instantly check whether
+      that establishment carries out <strong>non-stun or religious slaughter</strong>
+      — including Halal (dhabiha), Kosher (Shechita), and stunned-religious methods.
+    </p>
+
+    <!-- ── SEARCH ──────────────────────────────────────────────────────── -->
+    <div class="search-card">
+      <label for="code-input" class="search-label">Approval Code</label>
+      <div class="search-row">
+        <input
+          id="code-input"
+          type="text"
+          class="search-input"
+          placeholder="e.g. 1234 or AB123"
+          maxlength="12"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="characters"
+          spellcheck="false"
+        />
+        <button id="search-btn" class="search-btn">Check</button>
+      </div>
+      <p class="search-hint">
+        Find the code inside the oval health mark on your meat packaging —
+        e.g. <span class="mono-pill">UK&nbsp;1234&nbsp;EW</span>.
+        The number in the middle is the approval code.
+      </p>
+    </div>
+  </div>
+</header>
+
+<!-- ── RESULT ──────────────────────────────────────────────────────────────── -->
+<div id="result-wrap" class="result-wrap" hidden>
+  <div class="result-inner">
+    <div id="result-box" class="result-box"></div>
+  </div>
+</div>
+
+<!-- ── HOW IT WORKS ──────────────────────────────────────────────────────────── -->
+<section class="section section-alt">
+  <div class="section-inner">
+    <p class="section-eyebrow">How it works</p>
+    <h2 class="section-title">Three steps, one answer</h2>
+    <div class="how-grid">
+      <div class="how-card">
+        <div class="how-num">01</div>
+        <h3>Find the code</h3>
+        <p>Look for the oval health mark on your meat packaging. The number inside — e.g. <span class="mono-pill">1234</span> — is the FSA approval code for that specific abattoir.</p>
+      </div>
+      <div class="how-card">
+        <div class="how-num">02</div>
+        <h3>We cross-reference</h3>
+        <p>Your code is checked against the FSA's approved establishment register and the public certified lists of the HMC, HFA, and Shechita UK.</p>
+      </div>
+      <div class="how-card">
+        <div class="how-num">03</div>
+        <h3>You get an answer</h3>
+        <p>We return one of four results — from confirmed non-stun, to stunned religious, to possible religious, to standard slaughter — with full sources.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── STATUS GUIDE ──────────────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="section-inner">
+    <p class="section-eyebrow">Understanding results</p>
+    <h2 class="section-title">What each status means</h2>
+    <div class="status-grid">
+
+      <div class="status-card status-red">
+        <div class="status-dot dot-red"></div>
+        <div>
+          <h3>Non-Stun Religious Slaughter</h3>
+          <p>The animal is <strong>not stunned</strong> before killing. Certified by HMC (Halal) and/or Shechita UK (Kosher). This is the method associated with the greatest animal welfare concern.</p>
+          <p class="status-cert">Cert bodies: <strong>HMC, Shechita UK</strong></p>
+        </div>
+      </div>
+
+      <div class="status-card status-amber">
+        <div class="status-dot dot-amber"></div>
+        <div>
+          <h3>Stunned Religious Slaughter</h3>
+          <p>The animal <strong>is stunned</strong> before killing, but the slaughter follows religious rites (Halal). Certified by the HFA. Approximately 88% of UK halal production uses this method.</p>
+          <p class="status-cert">Cert bodies: <strong>HFA</strong></p>
+        </div>
+      </div>
+
+      <div class="status-card status-amber2">
+        <div class="status-dot dot-amber2"></div>
+        <div>
+          <h3>Possible Religious Slaughter — Verify</h3>
+          <p>The FSA record flags this site for religious slaughter activities, but it does not appear on any certification body's public list. It may carry out some religious slaughter runs. <strong>Verify directly.</strong></p>
+          <p class="status-cert">Source: FSA register only</p>
+        </div>
+      </div>
+
+      <div class="status-card status-green">
+        <div class="status-dot dot-green"></div>
+        <div>
+          <h3>Standard Slaughter</h3>
+          <p>No religious slaughter certification found in public data. This site appears to operate standard pre-stun slaughter only. Always check labelling for certainty.</p>
+          <p class="status-cert">Source: FSA register cross-referenced with HMC, HFA, Shechita UK</p>
+        </div>
+      </div>
+
+    </div>
+    <p class="status-caveat">
+      <strong>Important:</strong> The FSA does not publish which slaughterhouses use non-stun methods —
+      this has been withheld in response to FOI requests. A "Standard Slaughter" result means no
+      certification was found in public data, not a guarantee. Always check product labelling.
+    </p>
+  </div>
+</section>
+
+<!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-sources">
+      <p class="footer-heading">Data sources (updated monthly)</p>
+      <ul>
+        <li><a href="https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3" target="_blank" rel="noopener">FSA Approved Establishments — England &amp; Wales (Open Government Licence)</a></li>
+        <li><a href="https://halalmc.co.uk" target="_blank" rel="noopener">Halal Monitoring Committee (HMC) — non-stun halal</a></li>
+        <li><a href="https://www.halalfoodauthority.com" target="_blank" rel="noopener">Halal Food Authority (HFA) — stunned halal</a></li>
+        <li><a href="https://www.shechitauk.org" target="_blank" rel="noopener">Shechita UK — Kosher / non-stun</a></li>
+      </ul>
+    </div>
+    <div class="footer-right">
+      <p>For informational purposes only. Always verify with the producer.</p>
+      <p><a href="/why">Why does this exist? →</a></p>
+    </div>
+  </div>
+</footer>
+
+<script>
+const input = document.getElementById('code-input');
+const btn   = document.getElementById('search-btn');
+const wrap  = document.getElementById('result-wrap');
+const box   = document.getElementById('result-box');
+
+function check() {
+  const code = input.value.trim();
+  if (!code) { input.focus(); return; }
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  wrap.hidden = true;
+
+  fetch('/check?code=' + encodeURIComponent(code))
+    .then(r => r.json())
+    .then(render)
+    .catch(() => renderError())
+    .finally(() => { btn.disabled = false; btn.textContent = 'Check'; });
+}
+
+function render(d) {
+  if (!d.found) {
+    box.className = 'result-box result-notfound';
+    box.innerHTML = `
+      <div class="result-header">
+        <span class="result-icon">?</span>
+        <div>
+          <div class="result-label">Code not found</div>
+          <div class="result-code">Searched for: <span>${esc(d.code)}</span></div>
+        </div>
+      </div>
+      <div class="result-body">
+        <p>${esc(d.message)}</p>
+        <ul class="result-links">
+          ${(d.links||[]).map(l=>`<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a></li>`).join('')}
+        </ul>
+      </div>`;
+  } else {
+    const cls = {
+      'NON_STUN':       'result-red',
+      'STUN_RELIGIOUS': 'result-amber',
+      'MIXED':          'result-amber2',
+      'STANDARD':       'result-green',
+    }[d.status] || 'result-green';
+
+    const certLine = d.certified_by
+      ? `<div class="result-cert-tag">${esc(d.certified_by)}</div>`
+      : '';
+
+    box.className = 'result-box ' + cls;
+    box.innerHTML = `
+      <div class="result-header">
+        <span class="result-icon">${esc(d.icon)}</span>
+        <div>
+          <div class="result-label">${esc(d.label)}</div>
+          <div class="result-code">Code: <span>${esc(d.code)}</span></div>
+        </div>
+      </div>
+      <div class="result-body">
+        <div class="result-name">${esc(d.name)}</div>
+        <div class="result-address">${esc(d.address)}</div>
+        ${certLine}
+        <p class="result-summary">${esc(d.summary)}</p>
+        <div class="result-meta">Data last updated: ${esc(d.last_updated) || 'unknown'}</div>
+      </div>`;
+  }
+  wrap.hidden = false;
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderError() {
+  box.className = 'result-box result-notfound';
+  box.innerHTML = `
+    <div class="result-header">
+      <span class="result-icon">!</span>
+      <div><div class="result-label">Server error</div></div>
+    </div>
+    <div class="result-body"><p>Could not reach the server. Please try again shortly.</p></div>`;
+  wrap.hidden = false;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+btn.addEventListener('click', check);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+</script>
+</body>
+</html>
