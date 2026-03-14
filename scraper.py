@@ -76,7 +76,7 @@ def get_latest_fss_scotland_csv() -> str:
     FSS Scotland publish their CSV at a stable URL that always points to the latest version.
     We try the stable URL first, then fall back to scraping the page.
     """
-    stable_url = "https://www.foodstandards.gov.scot/downloads/Approved_establishments_in_Scotland.csv"
+    stable_url = "https://www.foodstandards.gov.scot/sites/default/files/2025-12/Approved%20Establishments%20in%20Scotland_0.csv"
     try:
         r = requests.head(stable_url, headers=HEADERS, timeout=10)
         if r.status_code == 200:
@@ -249,44 +249,21 @@ def scrape_hmc() -> set:
 
 
 def scrape_hfa() -> set:
-    log.info("Fetching HFA certified list…")
-    numbers = set()
-    for url in [
-        "https://www.halalfoodauthority.com/certified-companies",
-        "https://www.halalfoodauthority.com/certified-abattoirs",
-        "https://halalfoodauthority.com/abattoirs",
-    ]:
-        try:
-            found = fetch_gb_numbers(url)
-            if found:
-                numbers |= found
-                log.info(f"HFA: {len(found)} from {url}")
-            time.sleep(1)
-        except Exception as e:
-            log.warning(f"HFA failed {url}: {e}")
-    log.info(f"HFA total: {len(numbers)}")
-    return numbers
+    """
+    HFA does not publish a public list of certified abattoirs with FSA numbers.
+    Their site is a certification application portal only.
+    """
+    log.info("HFA: no public abattoir list available — skipping.")
+    return set()
 
 
 def scrape_shechita() -> set:
-    log.info("Fetching Shechita UK list…")
-    numbers = set()
-    for url in [
-        "https://www.shechitauk.org/approved-abattoirs/",
-        "https://www.shechitauk.org/abattoirs/",
-        "https://www.shechitauk.org/faqs/",
-        "https://www.shechitauk.org/",
-    ]:
-        try:
-            found = fetch_gb_numbers(url)
-            if found:
-                numbers |= found
-                log.info(f"Shechita: {len(found)} from {url}")
-            time.sleep(1)
-        except Exception as e:
-            log.warning(f"Shechita failed {url}: {e}")
-    log.info(f"Shechita total: {len(numbers)}")
-    return numbers
+    """
+    Shechita UK is an advocacy body, not a certifier.
+    Individual Beth Din bodies (KLBD etc) do not publish FSA approval number lists.
+    """
+    log.info("Shechita: no public abattoir list available — skipping.")
+    return set()
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
