@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Open Data — UK Abattoir Checker</title>
+  <meta name="description" content="Full public dataset of UK abattoirs and their religious slaughter status, cross-referenced from FSA open data and certification body lists."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+  <style>
+    .data-wrap { max-width: 1200px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+    .data-intro { max-width: 720px; margin-bottom: 2.5rem; }
+    .data-intro p { font-size: 0.93rem; color: var(--muted); line-height: 1.7; margin-bottom: 0.75rem; }
+    .data-intro a { color: var(--ink); }
+
+    .data-meta {
+      font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+      padding: 0.75rem 1rem; background: var(--paper2);
+      border-radius: 6px; border: 1px solid var(--line);
+      margin-bottom: 2.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap;
+    }
+    .data-meta span { white-space: nowrap; }
+    .data-meta strong { color: var(--ink); }
+
+    .data-section { margin-bottom: 3.5rem; }
+    .data-section-head {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .data-section-badge {
+      font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.25rem 0.65rem; border-radius: 3px;
+    }
+    .badge-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid var(--red-border); }
+    .badge-amber  { background: var(--amber2-bg); color: var(--amber2); border: 1px solid var(--amber2-border); }
+    .badge-green  { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-border); }
+    .data-count {
+      font-family: var(--mono); font-size: 0.72rem; color: var(--muted);
+    }
+    .data-section-desc {
+      font-size: 0.83rem; color: var(--muted); margin-bottom: 1.25rem;
+      max-width: 680px; line-height: 1.6;
+    }
+
+    .data-table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid var(--line); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead { background: var(--paper2); }
+    th {
+      font-family: var(--mono); font-size: 0.63rem; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); text-align: left;
+      padding: 0.6rem 0.9rem; border-bottom: 2px solid var(--line);
+      white-space: nowrap;
+    }
+    td { padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--paper2); }
+    .td-code { font-family: var(--mono); font-weight: 600; font-size: 0.78rem; white-space: nowrap; }
+    .td-cert {
+      font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+      background: var(--red); color: #fff;
+      padding: 0.15rem 0.45rem; border-radius: 3px; white-space: nowrap;
+    }
+    .td-flag {
+      font-family: var(--mono); font-size: 0.68rem;
+      background: var(--amber2-bg); color: var(--amber2);
+      border: 1px solid var(--amber2-border);
+      padding: 0.15rem 0.45rem; border-radius: 3px; white-space: nowrap;
+    }
+    .td-activities {
+      font-family: var(--mono); font-size: 0.68rem; color: var(--muted);
+      max-width: 260px; word-break: break-word;
+    }
+    .td-muted { color: var(--muted); }
+    .no-data { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); padding: 1rem 0.9rem; }
+
+    .search-filter {
+      font-family: var(--mono); font-size: 0.8rem;
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 4px; padding: 0.5rem 0.75rem;
+      color: var(--ink); outline: none; width: 260px;
+      margin-bottom: 0.9rem;
+      transition: border-color 0.15s;
+    }
+    .search-filter:focus { border-color: #999; }
+
+    @media (max-width: 600px) {
+      .data-meta { flex-direction: column; gap: 0.4rem; }
+      .search-filter { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">UK Abattoir Checker</a>
+    <div class="nav-links">
+      <a href="/"     class="nav-link">Check</a>
+      <a href="/why"  class="nav-link">Why?</a>
+      <a href="/data" class="nav-link active">Data</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <header class="why-hero">
+    <div class="masthead-inner">
+      <p class="masthead-eyebrow">Open Data</p>
+      <h1 class="masthead-title" style="font-size: clamp(1.8rem,4vw,2.8rem);">
+        Full UK abattoir dataset
+      </h1>
+      <p class="masthead-sub">
+        All data used by this tool, publicly available. Cross-referenced from the
+        FSA approved establishments register, the HMC certified supplier list,
+        and FSS/DAERA regional registers. Updated monthly.
+        <a href="/why" style="color:#f87171;">Why does this exist?</a>
+      </p>
+    </div>
+  </header>
+
+  <div class="data-wrap">
+
+    {% if last_scrape %}
+    <div class="data-meta">
+      <span>Last updated: <strong>{{ last_scrape.run_at[:10] }}</strong></span>
+      <span>Total abattoirs: <strong>{{ last_scrape.fsa_total }}</strong></span>
+      <span>Non-stun certified: <strong>{{ last_scrape.non_stun }}</strong></span>
+      <span>Possible religious: <strong>{{ last_scrape.mixed }}</strong></span>
+      <span>Standard slaughter: <strong>{{ last_scrape.standard }}</strong></span>
+      <span>Sources: <strong>FSA (E&amp;W) · DAERA (NI) · FSS (Scotland) · HMC</strong></span>
+    </div>
+    {% endif %}
+
+    <!-- ── NON-STUN ────────────────────────────────────────────────────── -->
+    <section class="data-section">
+      <div class="data-section-head">
+        <span class="data-section-badge badge-red">🔴 Non-Stun Religious Slaughter</span>
+        <span class="data-count">{{ non_stun|length }} establishments</span>
+      </div>
+      <p class="data-section-desc">
+        These abattoirs are certified by the
+        <a href="https://halalhmc.org" target="_blank" rel="noopener">Halal Monitoring Committee (HMC)</a>
+        for non-stun halal slaughter. Animals are not stunned before killing.
+        Source: HMC certified supplier PDF, cross-referenced against FSA approval numbers.
+      </p>
+      <input class="search-filter" type="text" placeholder="Filter by name, town or code…" oninput="filterTable('nonstun-table', this.value)"/>
+      <div class="data-table-wrap">
+        <table id="nonstun-table">
+          <thead>
+            <tr>
+              <th>FSA Code</th>
+              <th>Name</th>
+              <th>Address</th>
+              <th>Town</th>
+              <th>Postcode</th>
+              <th>Country</th>
+              <th>Certified by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in non_stun %}
+            <tr>
+              <td class="td-code">{{ r.approval_number }}</td>
+              <td>{{ r.name }}</td>
+              <td class="td-muted">{{ r.address_line1 }}</td>
+              <td>{{ r.town }}</td>
+              <td class="td-code">{{ r.postcode }}</td>
+              <td class="td-muted">{{ r.country }}</td>
+              <td><span class="td-cert">{{ r.certified_by }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="no-data">No records found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── MIXED ──────────────────────────────────────────────────────── -->
+    <section class="data-section">
+      <div class="data-section-head">
+        <span class="data-section-badge badge-amber">🟡 Possible Religious Slaughter</span>
+        <span class="data-count">{{ mixed|length }} establishments</span>
+      </div>
+      <p class="data-section-desc">
+        These abattoirs have FSA approval records that mention religious slaughter keywords
+        (halal, kosher, non-stun, religious, etc.) but do not appear on any certification
+        body's public list. They may carry out some religious slaughter runs. Verify directly.
+      </p>
+      <input class="search-filter" type="text" placeholder="Filter by name, town or code…" oninput="filterTable('mixed-table', this.value)"/>
+      <div class="data-table-wrap">
+        <table id="mixed-table">
+          <thead>
+            <tr>
+              <th>FSA Code</th>
+              <th>Name</th>
+              <th>Address</th>
+              <th>Town</th>
+              <th>Postcode</th>
+              <th>Country</th>
+              <th>FSA activity text</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in mixed %}
+            <tr>
+              <td class="td-code">{{ r.approval_number }}</td>
+              <td>{{ r.name }}</td>
+              <td class="td-muted">{{ r.address_line1 }}</td>
+              <td>{{ r.town }}</td>
+              <td class="td-code">{{ r.postcode }}</td>
+              <td class="td-muted">{{ r.country }}</td>
+              <td class="td-activities">{{ r.activities_raw[:180] }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="no-data">No records found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── STANDARD ───────────────────────────────────────────────────── -->
+    <section class="data-section">
+      <div class="data-section-head">
+        <span class="data-section-badge badge-green">🟢 Standard Slaughter</span>
+        <span class="data-count">{{ standard|length }} establishments</span>
+      </div>
+      <p class="data-section-desc">
+        No religious slaughter certification found for these abattoirs in any public data source.
+        Based on the FSA register and HMC certified list, these sites appear to operate
+        standard pre-stun slaughter only. <strong>This does not guarantee stunning</strong> —
+        the FSA withholds non-stun data. Always verify with the producer.
+      </p>
+      <input class="search-filter" type="text" placeholder="Filter by name, town or code…" oninput="filterTable('standard-table', this.value)"/>
+      <div class="data-table-wrap">
+        <table id="standard-table">
+          <thead>
+            <tr>
+              <th>FSA Code</th>
+              <th>Name</th>
+              <th>Address</th>
+              <th>Town</th>
+              <th>Postcode</th>
+              <th>Country</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in standard %}
+            <tr>
+              <td class="td-code">{{ r.approval_number }}</td>
+              <td>{{ r.name }}</td>
+              <td class="td-muted">{{ r.address_line1 }}</td>
+              <td>{{ r.town }}</td>
+              <td class="td-code">{{ r.postcode }}</td>
+              <td class="td-muted">{{ r.country }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="no-data">No records found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-sources">
+      <p class="footer-heading">Data sources (updated monthly)</p>
+      <ul>
+        <li><a href="https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3" target="_blank" rel="noopener">FSA Approved Establishments — England &amp; Wales (OGL v3)</a></li>
+        <li><a href="https://data.food.gov.uk/catalog/datasets/dae35822-ca4e-41a2-b2af-b10b6163085a" target="_blank" rel="noopener">DAERA Approved Establishments — Northern Ireland (OGL v3)</a></li>
+        <li><a href="https://www.foodstandards.gov.scot/publications-and-research/publications/approved-premises-register" target="_blank" rel="noopener">FSS Approved Establishments — Scotland (OGL v3)</a></li>
+        <li><a href="https://halalhmc.org/wp-content/uploads/certified-outlets/meats.pdf" target="_blank" rel="noopener">HMC Certified Supplier List</a></li>
+      </ul>
+    </div>
+    <div class="footer-right">
+      <p>For informational purposes only. Always verify with the producer.</p>
+      <p style="margin-top:1rem; font-size:0.72rem; color:#444;">CheckMyMeat.co.uk — A Joint Venture Between Matsumura Fishworks and Taramabuchi Heavy Manufacturing Concern</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+function filterTable(tableId, query) {
+  const q = query.toLowerCase();
+  const rows = document.getElementById(tableId).querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+
+</body>
+</html>
