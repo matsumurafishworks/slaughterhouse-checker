@@ -168,6 +168,33 @@ def stats():
     })
 
 
+@app.route("/data")
+def data():
+    con = get_db()
+    non_stun = con.execute(
+        "SELECT approval_number, name, address_line1, town, postcode, country, certified_by "
+        "FROM slaughterhouses WHERE slaughter_status='NON_STUN' ORDER BY name"
+    ).fetchall()
+    mixed = con.execute(
+        "SELECT approval_number, name, address_line1, town, postcode, country, activities_raw "
+        "FROM slaughterhouses WHERE slaughter_status='MIXED' ORDER BY name"
+    ).fetchall()
+    standard = con.execute(
+        "SELECT approval_number, name, address_line1, town, postcode, country "
+        "FROM slaughterhouses WHERE slaughter_status='STANDARD' ORDER BY name"
+    ).fetchall()
+    last = con.execute(
+        "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    con.close()
+    return render_template("data.html",
+        non_stun=[dict(r) for r in non_stun],
+        mixed=[dict(r) for r in mixed],
+        standard=[dict(r) for r in standard],
+        last_scrape=dict(last) if last else {}
+    )
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
