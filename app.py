@@ -99,6 +99,8 @@ def check():
                 "Approximately 88% of UK halal production uses this method."
             ),
         }
+    # Note: STUN_RELIGIOUS currently returns 0 results as HFA does not publish
+    # a public abattoir list. This status is reserved for future data sources.
     elif status == "MIXED":
         resp = {
             "badge":   "mixed",
