@@ -22,7 +22,7 @@ def lookup(code: str):
     clean = code.upper().replace(" ", "").replace("-", "")
     con = get_db()
     row = con.execute(
-        "SELECT * FROM abattoirs "
+        "SELECT * FROM slaughterhouses "
         "WHERE REPLACE(UPPER(approval_number),'-','') = ?",
         (clean,)
     ).fetchone()
@@ -153,7 +153,7 @@ def check():
 def stats():
     con = get_db()
     totals = con.execute(
-        "SELECT slaughter_status, COUNT(*) n FROM abattoirs GROUP BY slaughter_status"
+        "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall()
     last = con.execute(
         "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
