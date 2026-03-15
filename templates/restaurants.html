@@ -200,7 +200,7 @@
       border: 1px solid;
     }
     .o-badge-RESTAURANT   { background: var(--green-bg);   color: var(--green);  border-color: var(--green-border); }
-    .o-badge-TAKEAWAY     { background: var(--amber-bg);   color: var(--amber);  border-color: var(--amber-border); }
+    .o-badge-DESSERT      { background: var(--amber-bg);   color: var(--amber);  border-color: var(--amber-border); }
     .o-badge-BUTCHER_SHOP { background: var(--red-bg);     color: var(--red);    border-color: var(--red-border); }
     .o-badge-OTHER        { background: var(--paper2);     color: var(--muted);  border-color: var(--line); }
 
@@ -280,11 +280,15 @@
       </div>
       <div class="r-stat">
         <span class="r-stat-n">{{ counts.get('RESTAURANT', 0) }}</span>
-        <span class="r-stat-label">Restaurants</span>
+        <span class="r-stat-label">Restaurants &amp; Takeaways</span>
       </div>
       <div class="r-stat">
-        <span class="r-stat-n">{{ counts.get('TAKEAWAY', 0) }}</span>
-        <span class="r-stat-label">Takeaways</span>
+        <span class="r-stat-n">{{ counts.get('BUTCHER_SHOP', 0) }}</span>
+        <span class="r-stat-label">Butchers &amp; Shops</span>
+      </div>
+      <div class="r-stat">
+        <span class="r-stat-n">{{ counts.get('DESSERT', 0) }}</span>
+        <span class="r-stat-label">Dessert Shops</span>
       </div>
       <div class="r-stat">
         <span class="r-stat-n">{{ counts.get('BUTCHER_SHOP', 0) }}</span>
@@ -333,7 +337,7 @@
         <select id="type-near">
           <option value="">All types</option>
           <option value="RESTAURANT">Restaurants</option>
-          <option value="TAKEAWAY">Takeaways</option>
+          <option value="DESSERT">Dessert Shops</option>
           <option value="BUTCHER_SHOP">Butchers</option>
           <option value="OTHER">Other</option>
         </select>
@@ -350,7 +354,7 @@
         <select id="type-text">
           <option value="">All types</option>
           <option value="RESTAURANT">Restaurants</option>
-          <option value="TAKEAWAY">Takeaways</option>
+          <option value="DESSERT">Dessert Shops</option>
           <option value="BUTCHER_SHOP">Butchers</option>
           <option value="OTHER">Other</option>
         </select>
@@ -403,7 +407,7 @@
 
 {% if total > 0 %}
 <script>
-const BADGE_LABELS = { RESTAURANT:'Restaurant', TAKEAWAY:'Takeaway', BUTCHER_SHOP:'Butcher/Shop', OTHER:'Other' };
+const BADGE_LABELS = { RESTAURANT:"Restaurant/Takeaway", BUTCHER_SHOP:"Butcher/Shop", DESSERT:"Dessert Shop", OTHER:"Other" };
 const LIMIT = 50;
 let mode = 'postcode', textOffset = 0, textTotal = 0;
 
