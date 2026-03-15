@@ -266,64 +266,6 @@ HMC_CATEGORY_MAP = {
 }
 
 
-def _outlet_type_from_page(soup: BeautifulSoup) -> str:
-    """
-    Read HMC's own category from the outlet page.
-    Strategy:
-    1. Try WordPress body class taxonomy terms (most reliable)
-    2. Strip nav/header from soup, then search for category keywords
-       in a window around the "certified" text
-    """
-    # ── Strategy 1: body class ────────────────────────────────────────────────
-    body = soup.find("body")
-    if body:
-        classes = " ".join(body.get("class", [])).lower()
-        # WordPress adds term slugs e.g. "term-butchers", "term-caterers",
-        # "term-restaurants-and-takeaways"
-        if "term-butchers" in classes or "term-butcher" in classes:
-            return "BUTCHER_SHOP"
-        if "term-restaurants" in classes or "term-caterers" in classes or "term-caterer" in classes:
-            return "RESTAURANT"
-        if "term-dessert" in classes:
-            return "DESSERT"
-
-    # ── Strategy 2: strip nav/header, search around "certified" ──────────────
-    # Make a copy to avoid mutating the original soup
-    import copy
-    soup2 = copy.copy(soup)
-    for el in soup2.find_all(["nav", "header", "footer"]):
-        el.decompose()
-
-    text = soup2.get_text(" ", strip=True).lower()
-
-    # Find the word "certified" and look at the 400 chars after it
-    idx = text.find("certified")
-    if idx != -1:
-        window = text[idx: idx + 400]
-        if "butcher" in window:
-            return "BUTCHER_SHOP"
-        if "restaurant" in window or "takeaway" in window or "caterer" in window:
-            return "RESTAURANT"
-        if "dessert" in window:
-            return "DESSERT"
-
-    # ── Strategy 3: name-based fallback ──────────────────────────────────────
-    h1 = soup.find("h1")
-    if h1:
-        name = h1.get_text(strip=True).lower()
-        if any(w in name for w in ["butcher","meat shop","halal shop","grocery","deli","supermarket"]):
-            return "BUTCHER_SHOP"
-        if any(w in name for w in ["restaurant","kitchen","grill","diner","cafe","café",
-                                    "tandoori","biryani","curry","lounge","eatery"]):
-            return "RESTAURANT"
-        if any(w in name for w in ["takeaway","take away","kebab","pizza","burger","chicken","chippy"]):
-            return "RESTAURANT"  # HMC groups these as "Restaurants and Takeaways"
-        if "dessert" in name or "sweet" in name:
-            return "DESSERT"
-
-    return "OTHER"
-
-
 def get_outlet_urls_from_sitemap() -> list:
     urls = []
     for page_num in range(1, 30):
@@ -351,45 +293,66 @@ def get_outlet_urls_from_sitemap() -> list:
 
 
 def scrape_outlet_page(url: str) -> dict | None:
+    """
+    Scrape a single HMC outlet page.
+
+    Confirmed HTML structure (from page source):
+      Name:        h1.page-title
+      Category:    div.category-name > p          e.g. "Caterers"
+      Address:     div.outlet-address > p tags
+      Phone:       div.outlet-number > a
+      Coordinates: div.marker[data-lat][data-lng]  ← already geocoded!
+    """
     try:
         r    = requests.get(url, headers=HEADERS, timeout=20)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        h1   = soup.find("h1")
+        # ── Name ─────────────────────────────────────────────────────────────
+        h1   = soup.find("h1", class_="page-title") or soup.find("h1")
         name = h1.get_text(strip=True) if h1 else ""
-        if not name:
-            title = soup.find("title")
-            if title:
-                name = title.get_text(strip=True).split(" - ")[0].strip()
         if not name:
             return None
 
-        full_text = soup.get_text(" ", strip=True)
-        pm        = PHONE_RE.search(full_text)
-        phone     = pm.group(1).strip() if pm else ""
-        pcm       = POSTCODE_RE.search(full_text)
-        postcode  = _normalise_postcode(pcm.group(1)) if pcm else ""
+        # ── Category (HMC's own label) ────────────────────────────────────
+        cat_el      = soup.select_one("div.category-name p")
+        hmc_category = cat_el.get_text(strip=True).lower() if cat_el else ""
 
-        address = ""
-        for selector in [".outlet-address",".shop-address",".address-block",'[class*="address"]',".entry-content p"]:
-            el = soup.select_one(selector)
-            if el:
-                t = el.get_text(" ", strip=True)
-                if len(t) > 8:
-                    address = t
-                    break
+        if "butcher" in hmc_category:
+            outlet_type = "BUTCHER_SHOP"
+        elif "restaurant" in hmc_category or "takeaway" in hmc_category or "caterer" in hmc_category:
+            outlet_type = "RESTAURANT"
+        elif "dessert" in hmc_category:
+            outlet_type = "DESSERT"
+        else:
+            outlet_type = "OTHER"
 
-        town = ""
-        if postcode:
-            search_text = address or full_text
-            pc_pos = search_text.upper().find(postcode.replace(" ",""))
-            if pc_pos > 0:
-                pre   = search_text[:pc_pos].rstrip(", ")
-                parts = [p.strip() for p in re.split(r'[,\n]', pre) if p.strip()]
-                town  = parts[-1] if parts else ""
+        # ── Address ───────────────────────────────────────────────────────
+        addr_el  = soup.select_one("div.outlet-address")
+        address  = ""
+        postcode = ""
+        town     = ""
+        if addr_el:
+            parts    = [p.get_text(" ", strip=True) for p in addr_el.find_all("p") if p.get_text(strip=True)]
+            address  = " ".join(parts)
+            # Postcode is typically the last <p>
+            pcm = POSTCODE_RE.search(address)
+            if pcm:
+                postcode = _normalise_postcode(pcm.group(1))
+            # Town: last comma-separated segment before postcode
+            if postcode and postcode.replace(" ","") in address.replace(" ",""):
+                pre   = address[:address.upper().find(postcode.replace(" ","").upper())].rstrip(", ")
+                segs  = [s.strip() for s in re.split(r'[,\n]', pre) if s.strip()]
+                town  = segs[-1] if segs else ""
 
-        outlet_type = _outlet_type_from_page(soup)
+        # ── Phone ─────────────────────────────────────────────────────────
+        phone_el = soup.select_one("div.outlet-number a")
+        phone    = phone_el.get_text(strip=True) if phone_el else ""
+
+        # ── Coordinates (already in the page — no geocoding needed!) ──────
+        marker = soup.select_one("div.marker[data-lat][data-lng]")
+        lat    = float(marker["data-lat"]) if marker else None
+        lng    = float(marker["data-lng"]) if marker else None
 
         return {
             "name":        name,
@@ -399,8 +362,8 @@ def scrape_outlet_page(url: str) -> dict | None:
             "phone":       phone,
             "outlet_type": outlet_type,
             "source_url":  url,
-            "latitude":    None,
-            "longitude":   None,
+            "latitude":    lat,
+            "longitude":   lng,
         }
     except Exception as e:
         log.warning(f"Failed to scrape {url}: {e}")
@@ -428,38 +391,6 @@ def scrape_hmc_outlets() -> list:
     return outlets
 
 
-def geocode_outlets(outlets: list) -> list:
-    if not outlets:
-        return outlets
-    log.info("Geocoding via postcodes.io…")
-    to_geocode = list({o["postcode"] for o in outlets if o["postcode"]})
-    pc_coords: dict = {}
-    for i in range(0, len(to_geocode), 100):
-        try:
-            resp = requests.post(
-                "https://api.postcodes.io/postcodes",
-                json={"postcodes": to_geocode[i:i+100]},
-                headers={"Content-Type": "application/json"},
-                timeout=20,
-            )
-            resp.raise_for_status()
-            for item in resp.json().get("result", []):
-                result = item.get("result")
-                if result:
-                    pc_coords[item["query"].upper().replace(" ","")] = (result["latitude"], result["longitude"])
-        except Exception as e:
-            log.warning(f"Geocoding batch failed: {e}")
-        time.sleep(0.3)
-    matched = 0
-    for o in outlets:
-        key = o["postcode"].upper().replace(" ","") if o["postcode"] else ""
-        if key in pc_coords:
-            o["latitude"], o["longitude"] = pc_coords[key]
-            matched += 1
-    log.info(f"Geocoding: {matched}/{len(outlets)} have coordinates")
-    return outlets
-
-
 def upsert_outlets(con, outlets):
     now = datetime.utcnow().isoformat()
     con.execute("DELETE FROM hmc_outlets")
@@ -475,6 +406,113 @@ def upsert_outlets(con, outlets):
     con.commit()
     geocoded = sum(1 for o in outlets if o["latitude"])
     log.info(f"hmc_outlets: {len(outlets)} records, {geocoded} geocoded.")
+
+
+
+# ── HMC Schools ───────────────────────────────────────────────────────────────
+
+def scrape_hmc_schools() -> list:
+    """
+    Scrape HMC certified schools from wp-sitemap-posts-schools-N.xml.
+    School pages only contain a name (no address/phone/coordinates).
+    """
+    log.info("Fetching HMC school URLs from sitemap…")
+    school_urls = []
+    for page_num in range(1, 10):
+        sitemap_url = f"https://halalhmc.org/wp-sitemap-posts-schools-{page_num}.xml"
+        try:
+            r = requests.get(sitemap_url, headers=HEADERS, timeout=20)
+            if r.status_code == 404:
+                break
+            r.raise_for_status()
+            soup = BeautifulSoup(r.content, "xml")
+            page_urls = [loc.get_text(strip=True) for loc in soup.find_all("loc")]
+            if not page_urls:
+                break
+            school_urls.extend(page_urls)
+            log.info(f"Schools sitemap page {page_num}: {len(page_urls)} URLs (total {len(school_urls)})")
+            if len(page_urls) < 2000:
+                break
+            time.sleep(0.5)
+        except Exception as e:
+            log.warning(f"Schools sitemap page {page_num} error: {e}")
+            break
+
+    if not school_urls:
+        log.warning("No school URLs found in sitemap")
+        return []
+
+    log.info(f"Scraping {len(school_urls)} school pages…")
+    schools = []
+    for i, url in enumerate(school_urls):
+        try:
+            r    = requests.get(url, headers=HEADERS, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            h1   = soup.find("h1", class_="page-title") or soup.find("h1")
+            name = h1.get_text(strip=True) if h1 else ""
+            if not name:
+                continue
+
+            # Address — same structure as outlets, may or may not be present
+            addr_el  = soup.select_one("div.outlet-address")
+            address  = ""
+            postcode = ""
+            town     = ""
+            if addr_el:
+                parts   = [p.get_text(" ", strip=True) for p in addr_el.find_all("p") if p.get_text(strip=True)]
+                address = " ".join(parts)
+                pcm     = POSTCODE_RE.search(address)
+                if pcm:
+                    postcode = _normalise_postcode(pcm.group(1))
+                if postcode and postcode.replace(" ","") in address.replace(" ",""):
+                    pre  = address[:address.upper().find(postcode.replace(" ","").upper())].rstrip(", ")
+                    segs = [s.strip() for s in re.split(r"[,\n]", pre) if s.strip()]
+                    town = segs[-1] if segs else ""
+
+            # Phone
+            phone_el = soup.select_one("div.outlet-number a")
+            phone    = phone_el.get_text(strip=True) if phone_el else ""
+
+            # Coordinates
+            marker = soup.select_one("div.marker[data-lat][data-lng]")
+            lat    = float(marker["data-lat"]) if marker else None
+            lng    = float(marker["data-lng"]) if marker else None
+
+            schools.append({
+                "name":       name,
+                "address":    address,
+                "town":       town,
+                "postcode":   postcode,
+                "phone":      phone,
+                "source_url": url,
+                "latitude":   lat,
+                "longitude":  lng,
+            })
+
+            if (i + 1) % 100 == 0:
+                log.info(f"Schools progress: {i + 1}/{len(school_urls)} scraped")
+            time.sleep(0.4)
+        except Exception as e:
+            log.warning(f"Failed to scrape school {url}: {e}")
+
+    log.info(f"Schools scrape complete: {len(schools)} schools")
+    return schools
+
+
+def upsert_schools(con, schools: list):
+    now = datetime.utcnow().isoformat()
+    con.execute("DELETE FROM hmc_schools")
+    for s in schools:
+        con.execute("""
+            INSERT INTO hmc_schools
+              (name, address, town, postcode, phone, source_url, latitude, longitude, last_updated)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (s["name"], s["address"], s["town"], s["postcode"],
+              s["phone"], s["source_url"], s["latitude"], s["longitude"], now))
+    con.commit()
+    geocoded = sum(1 for s in schools if s["latitude"])
+    log.info(f"hmc_schools: {len(schools)} records, {geocoded} with coordinates.")
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -506,6 +544,18 @@ def init_db():
             stun_religious INTEGER,
             mixed          INTEGER,
             standard       INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS hmc_schools (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            address      TEXT,
+            town         TEXT,
+            postcode     TEXT,
+            phone        TEXT,
+            source_url   TEXT,
+            latitude     REAL,
+            longitude    REAL,
+            last_updated TEXT
         );
         CREATE TABLE IF NOT EXISTS hmc_outlets (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -613,10 +663,16 @@ def run():
     try:
         outlets = scrape_hmc_outlets()
         if outlets:
-            outlets = geocode_outlets(outlets)
             upsert_outlets(con, outlets)
     except Exception as e:
         log.error(f"HMC outlets failed: {e}")
+
+    try:
+        schools = scrape_hmc_schools()
+        if schools:
+            upsert_schools(con, schools)
+    except Exception as e:
+        log.error(f"HMC schools failed: {e}")
 
     con.close()
     log.info("Scrape complete.")
