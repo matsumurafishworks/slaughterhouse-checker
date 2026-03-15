@@ -17,7 +17,7 @@
     <a href="/" class="nav-logo">Check My Meat</a>
     <div class="nav-links">
       <a href="/"            class="nav-link active">Check</a>
-      <a href="/restaurants" class="nav-link">Restaurants</a>
+      <a href="/restaurants" class="nav-link">Schools &amp; Restaurants</a>
       <a href="/why"         class="nav-link">Why?</a>
       <a href="/data"        class="nav-link">Data</a>
     </div>
@@ -76,6 +76,13 @@
         <div>
           <span class="cov-label" id="stat-nonstun">13</span> confirmed non-stun
           <span class="cov-sub">HMC certified — updated monthly</span>
+        </div>
+      </div>
+      <div class="coverage-item">
+        <span class="cov-icon">✅</span>
+        <div>
+          <span class="cov-label" id="stat-cutting">—</span> cutting plants
+          <span class="cov-sub">Meat processing sites — updated monthly</span>
         </div>
       </div>
       <div class="coverage-item">
@@ -309,4 +316,9 @@ fetch('/stats').then(r => r.json()).then(data => {
   let nonStun = (data.counts.find(r => r.slaughter_status === 'NON_STUN') || {n:0}).n;
   let mixed = (data.counts.find(r => r.slaughter_status === 'MIXED') || {n:0}).n;
   document.getElementById('stat-total').textContent = total;
-  docu
+  document.getElementById('stat-nonstun').textContent = nonStun + (mixed ? ' (+' + mixed + ' unverified)' : '');
+  if (data.by_type) {
+    let cutting = (data.by_type.find(r => r.establishment_type === 'CUTTING_PLANT') || {n:0}).n;
+    document.getElementById('stat-cutting').textContent = cutting;
+  }
+}).catch(() => {});
