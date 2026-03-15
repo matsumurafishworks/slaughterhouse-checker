@@ -126,6 +126,7 @@
             <tr>
               <th>FSA Code</th>
               <th>Name</th>
+              <th>Type</th>
               <th>Address</th>
               <th>Town</th>
               <th>Postcode</th>
@@ -138,6 +139,7 @@
             <tr>
               <td class="td-code">{{ r.approval_number }}</td>
               <td>{{ r.name }}</td>
+              <td class="td-muted" style="font-size:0.75rem;">{{ r.establishment_type|replace('_',' ')|title }}</td>
               <td class="td-muted">{{ r.address_line1 }}</td>
               <td>{{ r.town }}</td>
               <td class="td-code">{{ r.postcode }}</td>
