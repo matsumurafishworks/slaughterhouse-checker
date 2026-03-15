@@ -1,16 +1,20 @@
 """
-app.py  – CheckMyMeat.co.uk Flask app
+app.py  – CheckMyMeat.co.uk
 """
 
-import math
-import os
-import sqlite3
+import math, os, sqlite3
+import urllib.request, json as _json
 from flask import Flask, render_template, request, jsonify
-import urllib.request
-import json as _json
 
 app = Flask(__name__)
 DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
+
+ESTABLISHMENT_LABELS = {
+    "SLAUGHTERHOUSE": "Slaughterhouse",
+    "GAME_HANDLER":   "Game Handling Establishment",
+    "CUTTING_PLANT":  "Cutting Plant",
+    "OTHER":          "Approved Establishment",
+}
 
 
 def get_db():
@@ -20,11 +24,10 @@ def get_db():
 
 
 def lookup(code: str):
-    clean = code.upper().replace(" ", "").replace("-", "")
+    clean = code.upper().replace(" ","").replace("-","")
     con   = get_db()
     row   = con.execute(
-        "SELECT * FROM slaughterhouses "
-        "WHERE REPLACE(UPPER(approval_number),'-','') = ?",
+        "SELECT * FROM slaughterhouses WHERE REPLACE(UPPER(approval_number),'-','') = ?",
         (clean,)
     ).fetchone()
     con.close()
@@ -35,26 +38,23 @@ def _haversine_miles(lat1, lon1, lat2, lon2) -> float:
     R    = 3958.8
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a    = (math.sin(dlat / 2) ** 2
-            + math.cos(math.radians(lat1))
-            * math.cos(math.radians(lat2))
-            * math.sin(dlon / 2) ** 2)
+    a    = (math.sin(dlat/2)**2
+            + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+            * math.sin(dlon/2)**2)
     return R * 2 * math.asin(math.sqrt(a))
 
 
-# ── Abattoir routes ───────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    con = get_db()
+    con    = get_db()
     counts = {}
     for row in con.execute(
         "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall():
         counts[row["slaughter_status"]] = row["n"]
-    last = con.execute(
-        "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    last = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
     total    = sum(counts.values())
     non_stun = counts.get("NON_STUN", 0)
@@ -72,19 +72,17 @@ def why():
 
 @app.route("/data")
 def data():
-    con = get_db()
+    con      = get_db()
     non_stun = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='NON_STUN' ORDER BY name"
     ).fetchall()
-    mixed = con.execute(
+    mixed    = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='MIXED' ORDER BY name"
     ).fetchall()
     standard = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='STANDARD' ORDER BY name"
     ).fetchall()
-    last = con.execute(
-        "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    last     = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
     return render_template("data.html",
         non_stun=[dict(r) for r in non_stun],
@@ -96,7 +94,7 @@ def data():
 
 @app.route("/check")
 def check():
-    code = request.args.get("code", "").strip()
+    code = request.args.get("code","").strip()
     if not code:
         return jsonify({"error": "No code provided"}), 400
 
@@ -107,7 +105,7 @@ def check():
             "found":   False,
             "code":    code,
             "message": (
-                "No abattoir found for this approval code. "
+                "No establishment found for this approval code. "
                 "Check the number from your packaging. "
                 "Scottish establishments are on a separate FSS register; "
                 "Northern Ireland on a separate DAERA register."
@@ -122,17 +120,23 @@ def check():
 
     status      = result["slaughter_status"]
     cert_bodies = result.get("certified_by") or ""
+    est_type    = result.get("establishment_type","SLAUGHTERHOUSE")
+    est_label   = ESTABLISHMENT_LABELS.get(est_type, "Approved Establishment")
+
+    # Cutting plants: slightly different wording since they process not slaughter
+    is_cutting = est_type == "CUTTING_PLANT"
 
     if status == "NON_STUN":
         resp = {
             "badge":   "non-stun",
             "colour":  "red",
             "icon":    "●",
-            "label":   "Non-Stun Religious Slaughter",
+            "label":   "Non-Stun Religious Slaughter" if not is_cutting else "Non-Stun Certified Supply Chain",
             "summary": (
-                "This establishment is certified for non-stun religious slaughter "
-                f"({cert_bodies}). Animals are not rendered unconscious before killing. "
-                "This covers both Halal (non-stun dhabiha) and Kosher (Shechita) methods."
+                f"This {est_label.lower()} is certified by {cert_bodies} for non-stun "
+                + ("halal slaughter. Animals are not rendered unconscious before killing."
+                   if not is_cutting else
+                   "halal meat. Meat processed here comes from non-stun certified abattoirs.")
             ),
         }
     elif status == "STUN_RELIGIOUS":
@@ -140,11 +144,10 @@ def check():
             "badge":   "stun-religious",
             "colour":  "amber",
             "icon":    "◑",
-            "label":   "Stunned Religious Slaughter",
+            "label":   "Stunned Religious Slaughter" if not is_cutting else "Stunned Halal Certified",
             "summary": (
-                f"This establishment is certified for religious slaughter ({cert_bodies}) "
-                "using pre-stun methods. Animals are stunned before killing. "
-                "Approximately 88% of UK halal production uses this method."
+                f"This {est_label.lower()} is certified for religious slaughter ({cert_bodies}) "
+                "using pre-stun methods. Animals are stunned before killing."
             ),
         }
     elif status == "MIXED":
@@ -154,9 +157,8 @@ def check():
             "icon":    "◑",
             "label":   "Possible Religious Slaughter — Verify",
             "summary": (
-                "This establishment's FSA approval record includes religious slaughter activities, "
-                "but it does not appear on any major certification body's public list. "
-                "It may carry out some religious slaughter runs alongside standard slaughter. "
+                f"This {est_label.lower()}'s FSA approval record includes religious slaughter "
+                "activities, but it does not appear on any major certification body's public list. "
                 "Contact the establishment directly to confirm."
             ),
         }
@@ -165,56 +167,57 @@ def check():
             "badge":   "standard",
             "colour":  "green",
             "icon":    "○",
-            "label":   "Standard Slaughter — No Religious Certification Found",
+            "label":   "No Religious Certification Found",
             "summary": (
-                "No religious slaughter certification has been found for this establishment "
-                "in publicly available data. Based on the FSA register and major certification "
-                "body lists, this site appears to operate standard pre-stun slaughter only. "
-                "Always verify via product labelling or by contacting the producer directly."
+                f"No religious slaughter certification has been found for this {est_label.lower()} "
+                "in publicly available data. Always verify via product labelling or by contacting "
+                "the producer directly."
             ),
         }
 
-    updated = (result.get("last_updated") or "")[:10]
     return jsonify({
-        "found":        True,
-        "code":         result["approval_number"],
-        "name":         result["name"],
-        "address":      ", ".join(filter(None, [
-                            result.get("address_line1"),
-                            result.get("address_line2"),
-                            result.get("town"),
-                            result.get("county"),
-                            result.get("postcode"),
-                        ])),
-        "country":      result.get("country", ""),
-        "status":       status,
-        "certified_by": cert_bodies,
-        "last_updated": updated,
+        "found":            True,
+        "code":             result["approval_number"],
+        "name":             result["name"],
+        "establishment_type": est_label,
+        "address":          ", ".join(filter(None, [
+                                result.get("address_line1"),
+                                result.get("address_line2"),
+                                result.get("town"),
+                                result.get("county"),
+                                result.get("postcode"),
+                            ])),
+        "country":          result.get("country",""),
+        "status":           status,
+        "certified_by":     cert_bodies,
+        "last_updated":     (result.get("last_updated") or "")[:10],
         **resp,
     })
 
 
 @app.route("/stats")
 def stats():
-    con = get_db()
+    con    = get_db()
     totals = con.execute(
         "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall()
-    last = con.execute(
-        "SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    by_type = con.execute(
+        "SELECT establishment_type, COUNT(*) n FROM slaughterhouses GROUP BY establishment_type"
+    ).fetchall()
+    last   = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
     return jsonify({
         "counts":      [dict(r) for r in totals],
+        "by_type":     [dict(r) for r in by_type],
         "last_scrape": dict(last) if last else None,
     })
 
 
-# ── Restaurant / outlets routes ───────────────────────────────────────────────
+# ── Restaurants ───────────────────────────────────────────────────────────────
 
 @app.route("/restaurants")
 def restaurants():
-    con = get_db()
+    con    = get_db()
     counts = {}
     for row in con.execute(
         "SELECT outlet_type, COUNT(*) n FROM hmc_outlets GROUP BY outlet_type"
@@ -230,28 +233,22 @@ def restaurants():
     last_updated = (last["last_updated"] or "")[:10] if last else "unknown"
     con.close()
     return render_template("restaurants.html",
-        total=total,
-        geocoded=geocoded,
-        counts=counts,
-        last_updated=last_updated,
+        total=total, geocoded=geocoded, counts=counts, last_updated=last_updated,
     )
 
 
 @app.route("/restaurants/nearby")
 def restaurants_nearby():
-    """Postcode radius search using postcodes.io for geocoding."""
-    postcode = request.args.get("postcode", "").strip().upper()
-    radius   = float(request.args.get("radius", 5))
-    radius   = min(radius, 50)
-    type_f   = request.args.get("type", "").strip().upper()
+    postcode = request.args.get("postcode","").strip().upper()
+    radius   = min(float(request.args.get("radius", 5)), 50)
+    type_f   = request.args.get("type","").strip().upper()
 
     if not postcode:
         return jsonify({"error": "postcode required"}), 400
 
     try:
-        pc_clean = postcode.replace(" ", "").upper()
-        url_geo  = f"https://api.postcodes.io/postcodes/{pc_clean}"
-        with urllib.request.urlopen(url_geo, timeout=5) as resp:
+        pc_clean = postcode.replace(" ","").upper()
+        with urllib.request.urlopen(f"https://api.postcodes.io/postcodes/{pc_clean}", timeout=5) as resp:
             data = _json.loads(resp.read())
         if data.get("status") != 200:
             return jsonify({"error": "Postcode not found"}), 404
@@ -262,21 +259,16 @@ def restaurants_nearby():
 
     lat_delta = radius / 69.0
     lon_delta = radius / (69.0 * math.cos(math.radians(centre_lat)))
-
-    con    = get_db()
-    conds  = ["latitude BETWEEN ? AND ?", "longitude BETWEEN ? AND ?", "latitude IS NOT NULL"]
-    params = [centre_lat - lat_delta, centre_lat + lat_delta,
-              centre_lon - lon_delta, centre_lon + lon_delta]
-
-    if type_f in ("RESTAURANT", "TAKEAWAY", "BUTCHER_SHOP", "OTHER"):
+    con       = get_db()
+    conds     = ["latitude BETWEEN ? AND ?", "longitude BETWEEN ? AND ?", "latitude IS NOT NULL"]
+    params    = [centre_lat - lat_delta, centre_lat + lat_delta,
+                 centre_lon - lon_delta, centre_lon + lon_delta]
+    if type_f in ("RESTAURANT","BUTCHER_SHOP","DESSERT","OTHER"):
         conds.append("outlet_type = ?")
         params.append(type_f)
 
-    rows = con.execute(
-        f"SELECT * FROM hmc_outlets WHERE {' AND '.join(conds)}", params
-    ).fetchall()
+    rows    = con.execute(f"SELECT * FROM hmc_outlets WHERE {' AND '.join(conds)}", params).fetchall()
     con.close()
-
     results = []
     for r in rows:
         dist = _haversine_miles(centre_lat, centre_lon, r["latitude"], r["longitude"])
@@ -284,22 +276,14 @@ def restaurants_nearby():
             d = dict(r)
             d["distance_miles"] = round(dist, 1)
             results.append(d)
-
     results.sort(key=lambda x: x["distance_miles"])
-    return jsonify({
-        "postcode": postcode,
-        "centre":   {"lat": centre_lat, "lon": centre_lon},
-        "radius":   radius,
-        "results":  results,
-        "total":    len(results),
-    })
+    return jsonify({"postcode": postcode, "radius": radius, "results": results, "total": len(results)})
 
 
 @app.route("/restaurants/search")
 def restaurants_search():
-    """Free-text search fallback."""
-    q      = request.args.get("q", "").strip()
-    type_f = request.args.get("type", "").strip().upper()
+    q      = request.args.get("q","").strip()
+    type_f = request.args.get("type","").strip().upper()
     limit  = min(int(request.args.get("limit", 50)), 200)
     offset = int(request.args.get("offset", 0))
 
@@ -307,7 +291,7 @@ def restaurants_search():
     if q:
         conds.append("(name LIKE ? OR address LIKE ? OR town LIKE ? OR postcode LIKE ?)")
         params.extend([f"%{q}%"] * 4)
-    if type_f in ("RESTAURANT", "TAKEAWAY", "BUTCHER_SHOP", "OTHER"):
+    if type_f in ("RESTAURANT","BUTCHER_SHOP","DESSERT","OTHER"):
         conds.append("outlet_type = ?")
         params.append(type_f)
 
@@ -317,17 +301,9 @@ def restaurants_search():
         f"SELECT * FROM hmc_outlets {where} ORDER BY name LIMIT ? OFFSET ?",
         params + [limit, offset]
     ).fetchall()
-    total = con.execute(
-        f"SELECT COUNT(*) n FROM hmc_outlets {where}", params
-    ).fetchone()["n"]
+    total = con.execute(f"SELECT COUNT(*) n FROM hmc_outlets {where}", params).fetchone()["n"]
     con.close()
-
-    return jsonify({
-        "results": [dict(r) for r in rows],
-        "total":   total,
-        "offset":  offset,
-        "limit":   limit,
-    })
+    return jsonify({"results": [dict(r) for r in rows], "total": total, "offset": offset, "limit": limit})
 
 
 if __name__ == "__main__":
