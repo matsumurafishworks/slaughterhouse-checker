@@ -67,8 +67,8 @@
       <div class="coverage-item">
         <span class="cov-icon">✅</span>
         <div>
-          <span class="cov-label" id="stat-total">350</span> UK abattoirs
-          <span class="cov-sub">England, Wales, Scotland &amp; Northern Ireland</span>
+          <span class="cov-label" id="stat-total">282</span> UK establishments
+          <span class="cov-sub">Abattoirs &amp; cutting plants — England, Wales, Scotland &amp; NI</span>
         </div>
       </div>
       <div class="coverage-item">
@@ -189,7 +189,7 @@
       a certification body list, or a correction, we want to hear from you.
       <a href="/data#contribute">See what we're missing →</a>
     </div>
-    <a href="mailto:data@checkmymeat.co.uk" class="contribute-strip-btn">
+    <a href="/cdn-cgi/l/email-protection#4b2f2a3f2a0b28232e28202632262e2a3f652824653e20" class="contribute-strip-btn">
       📧 Submit data or a correction
     </a>
   </div>
@@ -214,7 +214,7 @@
   </div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const input = document.getElementById('code-input');
 const btn   = document.getElementById('search-btn');
 const wrap  = document.getElementById('result-wrap');
@@ -309,8 +309,4 @@ fetch('/stats').then(r => r.json()).then(data => {
   let nonStun = (data.counts.find(r => r.slaughter_status === 'NON_STUN') || {n:0}).n;
   let mixed = (data.counts.find(r => r.slaughter_status === 'MIXED') || {n:0}).n;
   document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-nonstun').textContent = nonStun + (mixed ? ' (+' + mixed + ' unverified)' : '');
-}).catch(() => {});
-</script>
-</body>
-</html>
+  docu
