@@ -1,5 +1,10 @@
 """
-scraper.py  – UK Abattoir Data Scraper (full UK coverage + HMC outlets)
+scraper.py  – UK Abattoir + Processing Plant Scraper
+=====================================================
+Establishment types covered:
+  SLAUGHTERHOUSE        – Slaughterhouse == Yes
+  GAME_HANDLER          – Game_Handling_Establishment == Yes
+  CUTTING_PLANT         – Cutting_Plant == Yes
 """
 
 import csv, io, logging, os, re, sqlite3, time
@@ -20,22 +25,6 @@ RELIGIOUS_KEYWORDS = ["halal","kosher","shechita","religious","non-stun","non st
 GB_PAT      = re.compile(r"\bGB\s*(\d{3,5})\b", re.IGNORECASE)
 POSTCODE_RE = re.compile(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})\b', re.IGNORECASE)
 PHONE_RE    = re.compile(r'(?:Tel|Phone|Telephone|T)[:\s]*([\d\s\+\(\)]{7,})', re.IGNORECASE)
-
-# HMC's own category labels → our codes
-HMC_CATEGORY_MAP = {
-    "butchers":                  "BUTCHER_SHOP",
-    "butcher":                   "BUTCHER_SHOP",
-    "restaurants and takeaways": "RESTAURANT",
-    "restaurant":                "RESTAURANT",
-    "restaurants":               "RESTAURANT",
-    "takeaway":                  "TAKEAWAY",
-    "takeaways":                 "TAKEAWAY",
-    "caterers":                  "RESTAURANT",
-    "caterer":                   "RESTAURANT",
-    "dessert shops":             "OTHER",
-    "dessert":                   "OTHER",
-    "other":                     "OTHER",
-}
 
 FSA_EW_CATALOG = "https://data.food.gov.uk/catalog/datasets/1e61736a-2a1a-4c6a-b8b1-e45912ebc8e3"
 FSA_NI_CATALOG = "https://data.food.gov.uk/catalog/datasets/dae35822-ca4e-41a2-b2af-b10b6163085a"
@@ -70,6 +59,16 @@ def get_latest_csv_from_fsa_catalog(catalog_url: str) -> str:
 
 # ── FSA CSV parsers ───────────────────────────────────────────────────────────
 
+def _establishment_type(row: dict) -> str:
+    if row.get("slaughterhouse","").lower() == "yes":
+        return "SLAUGHTERHOUSE"
+    if row.get("game_handling_establishment","").lower() == "yes":
+        return "GAME_HANDLER"
+    if row.get("cutting_plant","").lower() == "yes":
+        return "CUTTING_PLANT"
+    return "OTHER"
+
+
 def parse_fsa_csv(url: str, country_override: str = "") -> list:
     log.info(f"Downloading FSA CSV: {url}")
     r = requests.get(url, headers=HEADERS, timeout=120)
@@ -79,17 +78,24 @@ def parse_fsa_csv(url: str, country_override: str = "") -> list:
     rows = []
     for raw in reader:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
-        if row.get("slaughterhouse","").lower() != "yes" and \
-           row.get("game_handling_establishment","").lower() != "yes":
+
+        is_slaughterhouse = row.get("slaughterhouse","").lower() == "yes"
+        is_game           = row.get("game_handling_establishment","").lower() == "yes"
+        is_cutting        = row.get("cutting_plant","").lower() == "yes"
+
+        if not (is_slaughterhouse or is_game or is_cutting):
             continue
+
         approval = row.get("appno","").strip().upper()
         if not approval:
             continue
+
         all_text = " ".join([
             row.get("all_activities",""),
             row.get("remarks",""),
             row.get("tradingname",""),
         ]).lower()
+
         rows.append({
             "approval_number":    approval,
             "name":               row.get("tradingname",""),
@@ -100,8 +106,13 @@ def parse_fsa_csv(url: str, country_override: str = "") -> list:
             "postcode":           row.get("postcode",""),
             "country":            country_override or row.get("country",""),
             "activities_raw":     row.get("all_activities",""),
+            "establishment_type": _establishment_type(row),
             "fsa_religious_flag": any(kw in all_text for kw in RELIGIOUS_KEYWORDS),
         })
+
+    slaughterhouses = sum(1 for r in rows if r["establishment_type"] in ("SLAUGHTERHOUSE","GAME_HANDLER"))
+    cutting_plants  = sum(1 for r in rows if r["establishment_type"] == "CUTTING_PLANT")
+    log.info(f"FSA CSV: {slaughterhouses} slaughterhouses/game handlers, {cutting_plants} cutting plants")
     return rows
 
 
@@ -127,21 +138,32 @@ def parse_scotland_csv(url: str) -> list:
     rows   = []
     for raw in reader:
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+        activities = (row.get("all activities approved","") or row.get("all_activities","")).lower()
         is_slaughterhouse = (
             row.get("slaughterhouse","").lower() == "yes"
-            or row.get("game_handling_establishment","").lower() == "yes"
-            or "slaughter" in row.get("all activities approved","").lower()
-            or "slaughter" in row.get("all_activities","").lower()
+            or "slaughter" in activities
         )
-        if not is_slaughterhouse:
+        is_game    = row.get("game_handling_establishment","").lower() == "yes" or "game handling" in activities
+        is_cutting = row.get("cutting_plant","").lower() == "yes" or "cutting plant" in activities
+
+        if not (is_slaughterhouse or is_game or is_cutting):
             continue
+
         approval = (
-            row.get("approval number","")
-            or row.get("appno","")
-            or row.get("approval no","")
+            row.get("approval number","") or row.get("appno","") or row.get("approval no","")
         ).strip().upper()
         if not approval:
             continue
+
+        if is_slaughterhouse:
+            est_type = "SLAUGHTERHOUSE"
+        elif is_game:
+            est_type = "GAME_HANDLER"
+        elif is_cutting:
+            est_type = "CUTTING_PLANT"
+        else:
+            est_type = "OTHER"
+
         rows.append({
             "approval_number":    approval,
             "name":               row.get("trading name","") or row.get("tradingname",""),
@@ -152,9 +174,10 @@ def parse_scotland_csv(url: str) -> list:
             "postcode":           row.get("post code","") or row.get("postcode",""),
             "country":            "Scotland",
             "activities_raw":     row.get("all activities approved","") or row.get("all_activities",""),
+            "establishment_type": est_type,
             "fsa_religious_flag": False,
         })
-    log.info(f"Scotland CSV: {len(rows)} slaughterhouses found")
+    log.info(f"Scotland CSV: {len(rows)} establishments found")
     return rows
 
 
@@ -228,34 +251,75 @@ def _normalise_postcode(pc: str) -> str:
     return pc
 
 
+# HMC's own category labels → our internal codes
+# Note: HMC uses "Restaurants and Takeaways" as ONE category — no separate takeaway type
+HMC_CATEGORY_MAP = {
+    "restaurants and takeaways": "RESTAURANT",
+    "caterers":                  "RESTAURANT",
+    "caterer":                   "RESTAURANT",
+    "restaurant":                "RESTAURANT",
+    "butchers":                  "BUTCHER_SHOP",
+    "butcher":                   "BUTCHER_SHOP",
+    "dessert shops":             "DESSERT",
+    "dessert":                   "DESSERT",
+    "other":                     "OTHER",
+}
+
+
 def _outlet_type_from_page(soup: BeautifulSoup) -> str:
     """
-    Extract HMC's own category label from the outlet page.
-    The category (e.g. "Caterers", "Butchers") appears immediately after
-    "Status: HMC Certified" in the page content.
-    We must NOT search the nav, which contains all category names.
+    Read HMC's own category from the outlet page.
+    Strategy:
+    1. Try WordPress body class taxonomy terms (most reliable)
+    2. Strip nav/header from soup, then search for category keywords
+       in a window around the "certified" text
     """
-    # Try body class — WordPress adds taxonomy term slugs as body classes
-    # e.g. class="... term-butchers ..." or "... term-caterers ..."
+    # ── Strategy 1: body class ────────────────────────────────────────────────
     body = soup.find("body")
     if body:
-        classes = " ".join(body.get("class", []))
-        for hmc_label, code in HMC_CATEGORY_MAP.items():
-            slug = hmc_label.replace(" ", "-")
-            if f"term-{slug}" in classes or f"category-{slug}" in classes:
-                return code
+        classes = " ".join(body.get("class", [])).lower()
+        # WordPress adds term slugs e.g. "term-butchers", "term-caterers",
+        # "term-restaurants-and-takeaways"
+        if "term-butchers" in classes or "term-butcher" in classes:
+            return "BUTCHER_SHOP"
+        if "term-restaurants" in classes or "term-caterers" in classes or "term-caterer" in classes:
+            return "RESTAURANT"
+        if "term-dessert" in classes:
+            return "DESSERT"
 
-    # Find the text that comes RIGHT AFTER "Status: HMC Certified"
-    # The page structure is: h1 > "Status: HMC Certified" > category label
-    full_text = soup.get_text(" ", strip=True)
-    marker    = "Status: HMC Certified"
-    idx       = full_text.find(marker)
+    # ── Strategy 2: strip nav/header, search around "certified" ──────────────
+    # Make a copy to avoid mutating the original soup
+    import copy
+    soup2 = copy.copy(soup)
+    for el in soup2.find_all(["nav", "header", "footer"]):
+        el.decompose()
+
+    text = soup2.get_text(" ", strip=True).lower()
+
+    # Find the word "certified" and look at the 400 chars after it
+    idx = text.find("certified")
     if idx != -1:
-        # Look at the 200 chars immediately after the status line
-        snippet = full_text[idx + len(marker): idx + len(marker) + 200].lower().strip()
-        for hmc_label, code in HMC_CATEGORY_MAP.items():
-            if snippet.startswith(hmc_label) or f"\n{hmc_label}" in snippet or f" {hmc_label}" in snippet[:50]:
-                return code
+        window = text[idx: idx + 400]
+        if "butcher" in window:
+            return "BUTCHER_SHOP"
+        if "restaurant" in window or "takeaway" in window or "caterer" in window:
+            return "RESTAURANT"
+        if "dessert" in window:
+            return "DESSERT"
+
+    # ── Strategy 3: name-based fallback ──────────────────────────────────────
+    h1 = soup.find("h1")
+    if h1:
+        name = h1.get_text(strip=True).lower()
+        if any(w in name for w in ["butcher","meat shop","halal shop","grocery","deli","supermarket"]):
+            return "BUTCHER_SHOP"
+        if any(w in name for w in ["restaurant","kitchen","grill","diner","cafe","café",
+                                    "tandoori","biryani","curry","lounge","eatery"]):
+            return "RESTAURANT"
+        if any(w in name for w in ["takeaway","take away","kebab","pizza","burger","chicken","chippy"]):
+            return "RESTAURANT"  # HMC groups these as "Restaurants and Takeaways"
+        if "dessert" in name or "sweet" in name:
+            return "DESSERT"
 
     return "OTHER"
 
@@ -292,7 +356,6 @@ def scrape_outlet_page(url: str) -> dict | None:
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        # Name from h1
         h1   = soup.find("h1")
         name = h1.get_text(strip=True) if h1 else ""
         if not name:
@@ -303,21 +366,13 @@ def scrape_outlet_page(url: str) -> dict | None:
             return None
 
         full_text = soup.get_text(" ", strip=True)
+        pm        = PHONE_RE.search(full_text)
+        phone     = pm.group(1).strip() if pm else ""
+        pcm       = POSTCODE_RE.search(full_text)
+        postcode  = _normalise_postcode(pcm.group(1)) if pcm else ""
 
-        # Phone
-        pm    = PHONE_RE.search(full_text)
-        phone = pm.group(1).strip() if pm else ""
-
-        # Postcode
-        pcm      = POSTCODE_RE.search(full_text)
-        postcode = _normalise_postcode(pcm.group(1)) if pcm else ""
-
-        # Address block
         address = ""
-        for selector in [
-            ".outlet-address", ".shop-address", ".address-block",
-            '[class*="address"]', ".entry-content p", ".acf-field",
-        ]:
+        for selector in [".outlet-address",".shop-address",".address-block",'[class*="address"]',".entry-content p"]:
             el = soup.select_one(selector)
             if el:
                 t = el.get_text(" ", strip=True)
@@ -325,7 +380,6 @@ def scrape_outlet_page(url: str) -> dict | None:
                     address = t
                     break
 
-        # Town: segment before postcode
         town = ""
         if postcode:
             search_text = address or full_text
@@ -335,7 +389,6 @@ def scrape_outlet_page(url: str) -> dict | None:
                 parts = [p.strip() for p in re.split(r'[,\n]', pre) if p.strip()]
                 town  = parts[-1] if parts else ""
 
-        # Outlet type from HMC's own category label on the page
         outlet_type = _outlet_type_from_page(soup)
 
         return {
@@ -357,7 +410,6 @@ def scrape_outlet_page(url: str) -> dict | None:
 def scrape_hmc_outlets() -> list:
     outlet_urls = get_outlet_urls_from_sitemap()
     if not outlet_urls:
-        log.warning("No outlet URLs found")
         return []
     log.info(f"Scraping {len(outlet_urls)} outlet pages…")
     outlets = []
@@ -366,25 +418,27 @@ def scrape_hmc_outlets() -> list:
         if outlet:
             outlets.append(outlet)
         if (i + 1) % 100 == 0:
-            log.info(f"Progress: {i + 1}/{len(outlet_urls)} pages scraped, {len(outlets)} outlets so far")
+            log.info(f"Progress: {i + 1}/{len(outlet_urls)} scraped, {len(outlets)} outlets so far")
         time.sleep(0.4)
-    log.info(f"Outlet scrape complete: {len(outlets)} outlets")
+
+    # Log type breakdown
+    from collections import Counter
+    counts = Counter(o["outlet_type"] for o in outlets)
+    log.info(f"Outlet types: {dict(counts)}")
     return outlets
 
 
 def geocode_outlets(outlets: list) -> list:
     if not outlets:
         return outlets
-    log.info("Geocoding outlet postcodes via postcodes.io…")
+    log.info("Geocoding via postcodes.io…")
     to_geocode = list({o["postcode"] for o in outlets if o["postcode"]})
-    log.info(f"Unique postcodes: {len(to_geocode)}")
     pc_coords: dict = {}
     for i in range(0, len(to_geocode), 100):
-        batch = to_geocode[i:i + 100]
         try:
             resp = requests.post(
                 "https://api.postcodes.io/postcodes",
-                json={"postcodes": batch},
+                json={"postcodes": to_geocode[i:i+100]},
                 headers={"Content-Type": "application/json"},
                 timeout=20,
             )
@@ -392,13 +446,13 @@ def geocode_outlets(outlets: list) -> list:
             for item in resp.json().get("result", []):
                 result = item.get("result")
                 if result:
-                    pc_coords[item["query"].upper().replace(" ", "")] = (result["latitude"], result["longitude"])
+                    pc_coords[item["query"].upper().replace(" ","")] = (result["latitude"], result["longitude"])
         except Exception as e:
             log.warning(f"Geocoding batch failed: {e}")
         time.sleep(0.3)
     matched = 0
     for o in outlets:
-        key = o["postcode"].upper().replace(" ", "") if o["postcode"] else ""
+        key = o["postcode"].upper().replace(" ","") if o["postcode"] else ""
         if key in pc_coords:
             o["latitude"], o["longitude"] = pc_coords[key]
             matched += 1
@@ -406,7 +460,7 @@ def geocode_outlets(outlets: list) -> list:
     return outlets
 
 
-def upsert_outlets(con: sqlite3.Connection, outlets: list):
+def upsert_outlets(con, outlets):
     now = datetime.utcnow().isoformat()
     con.execute("DELETE FROM hmc_outlets")
     for o in outlets:
@@ -415,9 +469,9 @@ def upsert_outlets(con: sqlite3.Connection, outlets: list):
               (name, address, town, postcode, phone, outlet_type,
                source_url, latitude, longitude, last_updated)
             VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (o["name"], o["address"], o["town"], o["postcode"],
-              o["phone"], o["outlet_type"], o["source_url"],
-              o["latitude"], o["longitude"], now))
+        """, (o["name"],o["address"],o["town"],o["postcode"],
+              o["phone"],o["outlet_type"],o["source_url"],
+              o["latitude"],o["longitude"],now))
     con.commit()
     geocoded = sum(1 for o in outlets if o["latitude"])
     log.info(f"hmc_outlets: {len(outlets)} records, {geocoded} geocoded.")
@@ -429,19 +483,20 @@ def init_db():
     con = sqlite3.connect(DB_PATH)
     con.executescript("""
         CREATE TABLE IF NOT EXISTS slaughterhouses (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            approval_number  TEXT UNIQUE NOT NULL,
-            name             TEXT,
-            address_line1    TEXT,
-            address_line2    TEXT,
-            town             TEXT,
-            county           TEXT,
-            postcode         TEXT,
-            country          TEXT,
-            activities_raw   TEXT,
-            slaughter_status TEXT NOT NULL DEFAULT 'STANDARD',
-            certified_by     TEXT,
-            last_updated     TEXT
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            approval_number   TEXT UNIQUE NOT NULL,
+            name              TEXT,
+            address_line1     TEXT,
+            address_line2     TEXT,
+            town              TEXT,
+            county            TEXT,
+            postcode          TEXT,
+            country           TEXT,
+            activities_raw    TEXT,
+            establishment_type TEXT NOT NULL DEFAULT 'SLAUGHTERHOUSE',
+            slaughter_status  TEXT NOT NULL DEFAULT 'STANDARD',
+            certified_by      TEXT,
+            last_updated      TEXT
         );
         CREATE TABLE IF NOT EXISTS scrape_log (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -466,15 +521,22 @@ def init_db():
             last_updated TEXT
         );
     """)
-    con.commit()
+    # Add establishment_type column if upgrading from old schema
+    try:
+        con.execute("ALTER TABLE slaughterhouses ADD COLUMN establishment_type TEXT NOT NULL DEFAULT 'SLAUGHTERHOUSE'")
+        con.commit()
+    except Exception:
+        pass  # Column already exists
     return con
 
 
 def classify(row, hmc, hfa, shechita):
-    n = row["approval_number"]
+    n           = row["approval_number"]
     in_hmc      = n in hmc
     in_hfa      = n in hfa
     in_shechita = n in shechita
+    # Cutting plants: if HMC-certified they're confirmed non-stun supply chain
+    # If not cert body matched but FSA-flagged, mark MIXED
     if in_hmc or in_shechita:
         bodies = ",".join(filter(None, ["HMC" if in_hmc else "", "Shechita" if in_shechita else ""]))
         return "NON_STUN", bodies
@@ -494,18 +556,20 @@ def upsert(con, rows, hmc, hfa, shechita):
         con.execute("""
             INSERT INTO slaughterhouses
               (approval_number,name,address_line1,address_line2,town,county,
-               postcode,country,activities_raw,slaughter_status,certified_by,last_updated)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               postcode,country,activities_raw,establishment_type,slaughter_status,certified_by,last_updated)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(approval_number) DO UPDATE SET
               name=excluded.name, address_line1=excluded.address_line1,
               address_line2=excluded.address_line2, town=excluded.town,
               county=excluded.county, postcode=excluded.postcode,
               country=excluded.country, activities_raw=excluded.activities_raw,
+              establishment_type=excluded.establishment_type,
               slaughter_status=excluded.slaughter_status,
               certified_by=excluded.certified_by, last_updated=excluded.last_updated
         """, (row["approval_number"],row["name"],row["address_line1"],
               row["address_line2"],row["town"],row["county"],row["postcode"],
-              row["country"],row["activities_raw"],status,bodies,now))
+              row["country"],row["activities_raw"],row["establishment_type"],
+              status,bodies,now))
     con.execute("""
         INSERT INTO scrape_log (run_at,fsa_total,non_stun,stun_religious,mixed,standard)
         VALUES (?,?,?,?,?,?)
@@ -522,14 +586,14 @@ def run():
 
     try:
         ew_rows = parse_fsa_csv(get_latest_csv_from_fsa_catalog(FSA_EW_CATALOG))
-        log.info(f"England & Wales: {len(ew_rows)} slaughterhouses")
+        log.info(f"England & Wales: {len(ew_rows)} establishments")
         all_rows.extend(ew_rows)
     except Exception as e:
         log.error(f"England & Wales failed: {e}")
 
     try:
         ni_rows = parse_fsa_csv(get_latest_csv_from_fsa_catalog(FSA_NI_CATALOG), country_override="Northern Ireland")
-        log.info(f"Northern Ireland: {len(ni_rows)} slaughterhouses")
+        log.info(f"Northern Ireland: {len(ni_rows)} establishments")
         all_rows.extend(ni_rows)
     except Exception as e:
         log.error(f"Northern Ireland failed: {e}")
@@ -540,8 +604,7 @@ def run():
     except Exception as e:
         log.error(f"Scotland failed: {e}")
 
-    log.info(f"Total: {len(all_rows)} slaughterhouses")
-
+    log.info(f"Total: {len(all_rows)} establishments")
     hmc      = scrape_hmc()
     hfa      = scrape_hfa()
     shechita = scrape_shechita()
@@ -552,8 +615,6 @@ def run():
         if outlets:
             outlets = geocode_outlets(outlets)
             upsert_outlets(con, outlets)
-        else:
-            log.warning("No outlet data — hmc_outlets table will be empty")
     except Exception as e:
         log.error(f"HMC outlets failed: {e}")
 
