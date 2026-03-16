@@ -4,3 +4,5 @@ beautifulsoup4>=4.12
 lxml>=5.0
 gunicorn>=21.0
 pdfminer.six>=20221105
+APScheduler==3.10.4
+
