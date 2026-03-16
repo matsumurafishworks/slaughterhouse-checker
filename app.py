@@ -432,6 +432,62 @@ def restaurants_search():
     return jsonify({"results": [dict(r) for r in rows], "total": total, "offset": offset, "limit": limit})
 
 
+@app.route("/admin/geocode-schools")
+def geocode_schools():
+    """
+    One-shot endpoint to geocode any schools in the DB that have a postcode
+    but no coordinates. Hit this once after deploy — takes ~2 seconds.
+    """
+    import json as _json2
+    con = get_db()
+    rows = con.execute(
+        "SELECT id, postcode FROM hmc_schools WHERE postcode != '' AND latitude IS NULL"
+    ).fetchall()
+
+    if not rows:
+        con.close()
+        return jsonify({"message": "All schools already geocoded", "updated": 0})
+
+    postcodes = [r["postcode"] for r in rows]
+    updated = 0
+    errors  = []
+
+    for i in range(0, len(postcodes), 100):
+        batch_rows = rows[i:i+100]
+        batch_pcs  = postcodes[i:i+100]
+        try:
+            with urllib.request.urlopen(
+                urllib.request.Request(
+                    "https://api.postcodes.io/postcodes",
+                    data=_json2.dumps({"postcodes": batch_pcs}).encode(),
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                ), timeout=15
+            ) as resp:
+                data = _json2.loads(resp.read())
+            for row, result in zip(batch_rows, data.get("result", [])):
+                if result and result.get("result"):
+                    lat = result["result"]["latitude"]
+                    lng = result["result"]["longitude"]
+                    con.execute(
+                        "UPDATE hmc_schools SET latitude=?, longitude=? WHERE id=?",
+                        (lat, lng, row["id"])
+                    )
+                    updated += 1
+                else:
+                    errors.append(row["postcode"])
+        except Exception as e:
+            errors.append(str(e))
+
+    con.commit()
+    con.close()
+    return jsonify({
+        "message": f"Geocoded {updated} of {len(rows)} schools",
+        "updated": updated,
+        "failed_postcodes": errors
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
