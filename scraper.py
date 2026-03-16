@@ -134,12 +134,50 @@ def get_latest_csv_from_fsa_catalog(catalog_url: str) -> str:
 
 def get_scotland_csv_url() -> str:
     """
-    Try the permanent FSS URL directly — no HEAD check, just attempt the download.
-    Fall back to scraping the catalog page only if it fails.
+    FSS does not have a stable permanent URL — try a series of dated URLs
+    based on current and recent months, falling back to the catalog page.
     """
-    # Try permanent URL directly (FSS overwrites this file each month)
-    log.info("Scotland: using permanent URL")
-    return FSS_SCOT_CSV_PRIMARY
+    from datetime import date
+    # Build candidate dated URLs for current + last 3 months
+    candidates = []
+    d = datetime.utcnow()
+    for _ in range(4):
+        year  = d.year
+        month = d.month
+        # FSS uses two URL patterns
+        candidates.append(
+            f"https://www.foodstandards.gov.scot/sites/default/files/"
+            f"{year}-{month:02d}/Approved%20Establishments%20in%20Scotland_0.csv"
+        )
+        # Step back one month
+        if month == 1:
+            d = d.replace(year=year-1, month=12)
+        else:
+            d = d.replace(month=month-1)
+
+    for url in candidates:
+        try:
+            r = requests.head(url, headers=HEADERS, timeout=10, allow_redirects=True)
+            if r.status_code == 200:
+                log.info(f"Scotland: found working URL {url}")
+                return url
+        except Exception:
+            continue
+
+    # Last resort: scrape the open data catalog page
+    log.info("Scotland: scraping catalog page for CSV link…")
+    try:
+        r = requests.get(FSS_SCOT_CATALOG_PAGE, headers=HEADERS, timeout=30)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.endswith(".csv") and "scotland" in href.lower():
+                return href if href.startswith("http") else "https://www.foodstandards.gov.scot" + href
+    except Exception as e:
+        log.warning(f"Scotland catalog scrape failed: {e}")
+
+    raise RuntimeError("Could not find Scotland CSV URL")
 
 
 # ── FSA CSV parsers ───────────────────────────────────────────────────────────
