@@ -72,7 +72,6 @@
     <div class="nav-links">
       <a href="/"            class="nav-link">Check</a>
       <a href="/restaurants" class="nav-link">Restaurants &amp; Outlets</a>
-      <a href="/schools"     class="nav-link">Schools</a>
       <a href="/why"         class="nav-link">Why?</a>
       <a href="/data"        class="nav-link active">Data</a>
     </div>
@@ -100,8 +99,7 @@
     {% if last_scrape %}
     <div class="data-meta">
       <span>Last updated: <strong>{{ last_scrape.run_at[:10] }}</strong></span>
-      <span>Abattoirs: <strong>{{ abattoirs }}</strong></span>
-      <span>Cutting plants: <strong>{{ cutting_plants }}</strong></span>
+      <span>Total abattoirs: <strong>{{ last_scrape.fsa_total }}</strong></span>
       <span>Non-stun certified: <strong>{{ last_scrape.non_stun }}</strong></span>
       <span>Possible religious: <strong>{{ last_scrape.mixed }}</strong></span>
       <span>Standard slaughter: <strong>{{ last_scrape.standard }}</strong></span>
@@ -117,8 +115,11 @@
       </div>
       <p class="data-section-desc">
         These abattoirs are certified by the
-        <a href="https://halalhmc.org" target="_blank" rel="noopener">Halal Monitoring Committee (HMC)</a>
-        for non-stun halal slaughter. Animals are not stunned before killing.
+        <a href="https://halalhmc.org" target="_blank" rel="noopener">Halal Monitoring Committee (HMC)</a>,
+        which certifies non-stun halal slaughter only. However, the AHDB has advised that some
+        HMC-certified sites operate <strong>both stun and non-stun protocols</strong> depending on the
+        order being processed. This list confirms HMC certification — it does not guarantee
+        every animal at that site is non-stun. Verify directly with the establishment if certainty is required.
         Source: HMC certified supplier PDF, cross-referenced against FSA approval numbers.
       </p>
       <input class="search-filter" type="text" placeholder="Filter by name, town or code…" oninput="filterTable('nonstun-table', this.value)"/>
