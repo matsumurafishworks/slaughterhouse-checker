@@ -48,18 +48,30 @@ def _haversine_miles(lat1, lon1, lat2, lon2) -> float:
 
 @app.route("/")
 def index():
-    con    = get_db()
+    con = get_db()
     counts = {}
     for row in con.execute(
         "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall():
         counts[row["slaughter_status"]] = row["n"]
+
+    # Split abattoirs vs cutting plants
+    by_type = {}
+    for row in con.execute(
+        "SELECT establishment_type, COUNT(*) n FROM slaughterhouses GROUP BY establishment_type"
+    ).fetchall():
+        by_type[row["establishment_type"]] = row["n"]
+
     last = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
-    total    = sum(counts.values())
-    non_stun = counts.get("NON_STUN", 0)
+
+    abattoirs     = by_type.get("SLAUGHTERHOUSE", 0) + by_type.get("GAME_HANDLER", 0)
+    cutting_plants = by_type.get("CUTTING_PLANT", 0)
+    non_stun      = counts.get("NON_STUN", 0)
+
     return render_template("index.html",
-        total=total,
+        abattoirs=abattoirs,
+        cutting_plants=cutting_plants,
         non_stun=non_stun,
         last_updated=(dict(last)["run_at"][:10] if last else "unknown"),
     )
@@ -72,23 +84,39 @@ def why():
 
 @app.route("/data")
 def data():
-    con      = get_db()
+    con = get_db()
     non_stun = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='NON_STUN' ORDER BY name"
     ).fetchall()
-    mixed    = con.execute(
+    mixed = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='MIXED' ORDER BY name"
     ).fetchall()
     standard = con.execute(
         "SELECT * FROM slaughterhouses WHERE slaughter_status='STANDARD' ORDER BY name"
     ).fetchall()
-    last     = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
+    last = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
+
+    # Counts split by type for the stats bar
+    by_type = {}
+    for row in con.execute(
+        "SELECT establishment_type, COUNT(*) n FROM slaughterhouses GROUP BY establishment_type"
+    ).fetchall():
+        by_type[row["establishment_type"]] = row["n"]
+
     con.close()
+
+    abattoirs      = by_type.get("SLAUGHTERHOUSE", 0) + by_type.get("GAME_HANDLER", 0)
+    cutting_plants = by_type.get("CUTTING_PLANT", 0)
+
+    last_scrape = dict(last) if last else None
+
     return render_template("data.html",
         non_stun=[dict(r) for r in non_stun],
         mixed=[dict(r) for r in mixed],
         standard=[dict(r) for r in standard],
-        last_scrape=dict(last) if last else None,
+        last_scrape=last_scrape,
+        abattoirs=abattoirs,
+        cutting_plants=cutting_plants,
     )
 
 
@@ -122,9 +150,7 @@ def check():
     cert_bodies = result.get("certified_by") or ""
     est_type    = result.get("establishment_type","SLAUGHTERHOUSE")
     est_label   = ESTABLISHMENT_LABELS.get(est_type, "Approved Establishment")
-
-    # Cutting plants: slightly different wording since they process not slaughter
-    is_cutting = est_type == "CUTTING_PLANT"
+    is_cutting  = est_type == "CUTTING_PLANT"
 
     if status == "NON_STUN":
         resp = {
@@ -176,28 +202,28 @@ def check():
         }
 
     return jsonify({
-        "found":            True,
-        "code":             result["approval_number"],
-        "name":             result["name"],
+        "found":              True,
+        "code":               result["approval_number"],
+        "name":               result["name"],
         "establishment_type": est_label,
-        "address":          ", ".join(filter(None, [
-                                result.get("address_line1"),
-                                result.get("address_line2"),
-                                result.get("town"),
-                                result.get("county"),
-                                result.get("postcode"),
-                            ])),
-        "country":          result.get("country",""),
-        "status":           status,
-        "certified_by":     cert_bodies,
-        "last_updated":     (result.get("last_updated") or "")[:10],
+        "address":            ", ".join(filter(None, [
+                                  result.get("address_line1"),
+                                  result.get("address_line2"),
+                                  result.get("town"),
+                                  result.get("county"),
+                                  result.get("postcode"),
+                              ])),
+        "country":            result.get("country",""),
+        "status":             status,
+        "certified_by":       cert_bodies,
+        "last_updated":       (result.get("last_updated") or "")[:10],
         **resp,
     })
 
 
 @app.route("/stats")
 def stats():
-    con    = get_db()
+    con = get_db()
     totals = con.execute(
         "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall()
@@ -207,7 +233,7 @@ def stats():
         ).fetchall()
     except Exception:
         by_type = []
-    last   = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
+    last = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
     return jsonify({
         "counts":      [dict(r) for r in totals],
@@ -216,16 +242,17 @@ def stats():
     })
 
 
-# ── Restaurants ───────────────────────────────────────────────────────────────
+# ── Restaurants / Outlets ─────────────────────────────────────────────────────
 
 @app.route("/restaurants")
 def restaurants():
-    con    = get_db()
+    con = get_db()
     counts = {}
     for row in con.execute(
         "SELECT outlet_type, COUNT(*) n FROM hmc_outlets GROUP BY outlet_type"
     ).fetchall():
         counts[row["outlet_type"]] = row["n"]
+
     total    = sum(counts.values())
     geocoded = con.execute(
         "SELECT COUNT(*) n FROM hmc_outlets WHERE latitude IS NOT NULL"
@@ -235,10 +262,102 @@ def restaurants():
     ).fetchone()
     last_updated = (last["last_updated"] or "")[:10] if last else "unknown"
     con.close()
+
     return render_template("restaurants.html",
-        total=total, geocoded=geocoded, counts=counts, last_updated=last_updated,
+        total=total,
+        geocoded=geocoded,
+        counts=counts,
+        last_updated=last_updated,
     )
 
+
+# ── Schools ───────────────────────────────────────────────────────────────────
+
+@app.route("/schools")
+def schools():
+    con = get_db()
+    total = con.execute("SELECT COUNT(*) n FROM hmc_schools").fetchone()["n"]
+    geocoded = con.execute(
+        "SELECT COUNT(*) n FROM hmc_schools WHERE latitude IS NOT NULL"
+    ).fetchone()["n"]
+    last = con.execute(
+        "SELECT last_updated FROM hmc_schools ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    last_updated = (last["last_updated"] or "")[:10] if last else "unknown"
+    con.close()
+
+    return render_template("schools.html",
+        total=total,
+        geocoded=geocoded,
+        last_updated=last_updated,
+    )
+
+
+@app.route("/schools/nearby")
+def schools_nearby():
+    postcode = request.args.get("postcode","").strip().upper()
+    radius   = min(float(request.args.get("radius", 5)), 50)
+
+    if not postcode:
+        return jsonify({"error": "postcode required"}), 400
+
+    try:
+        pc_clean = postcode.replace(" ","").upper()
+        with urllib.request.urlopen(f"https://api.postcodes.io/postcodes/{pc_clean}", timeout=5) as resp:
+            data = _json.loads(resp.read())
+        if data.get("status") != 200:
+            return jsonify({"error": "Postcode not found"}), 404
+        centre_lat = data["result"]["latitude"]
+        centre_lon = data["result"]["longitude"]
+    except Exception as e:
+        return jsonify({"error": f"Could not geocode postcode: {e}"}), 400
+
+    lat_delta = radius / 69.0
+    lon_delta = radius / (69.0 * math.cos(math.radians(centre_lat)))
+    con       = get_db()
+    rows      = con.execute("""
+        SELECT * FROM hmc_schools
+        WHERE latitude BETWEEN ? AND ?
+          AND longitude BETWEEN ? AND ?
+          AND latitude IS NOT NULL
+    """, [centre_lat - lat_delta, centre_lat + lat_delta,
+          centre_lon - lon_delta, centre_lon + lon_delta]).fetchall()
+    con.close()
+
+    results = []
+    for r in rows:
+        dist = _haversine_miles(centre_lat, centre_lon, r["latitude"], r["longitude"])
+        if dist <= radius:
+            d = dict(r)
+            d["distance_miles"] = round(dist, 1)
+            results.append(d)
+    results.sort(key=lambda x: x["distance_miles"])
+    return jsonify({"postcode": postcode, "radius": radius, "results": results, "total": len(results)})
+
+
+@app.route("/schools/search")
+def schools_search():
+    q      = request.args.get("q","").strip()
+    limit  = min(int(request.args.get("limit", 50)), 200)
+    offset = int(request.args.get("offset", 0))
+
+    conds, params = [], []
+    if q:
+        conds.append("(name LIKE ? OR address LIKE ? OR town LIKE ? OR postcode LIKE ?)")
+        params.extend([f"%{q}%"] * 4)
+
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
+    con   = get_db()
+    rows  = con.execute(
+        f"SELECT * FROM hmc_schools {where} ORDER BY name LIMIT ? OFFSET ?",
+        params + [limit, offset]
+    ).fetchall()
+    total = con.execute(f"SELECT COUNT(*) n FROM hmc_schools {where}", params).fetchone()["n"]
+    con.close()
+    return jsonify({"results": [dict(r) for r in rows], "total": total, "offset": offset, "limit": limit})
+
+
+# ── Outlets API (restaurants nearby/search — unchanged) ───────────────────────
 
 @app.route("/restaurants/nearby")
 def restaurants_nearby():
