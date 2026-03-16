@@ -93,10 +93,6 @@
         <span class="r-stat-n">{{ total }}</span>
         <span class="r-stat-label">HMC Schools</span>
       </div>
-      <div class="r-stat">
-        <span class="r-stat-n">{{ geocoded }}</span>
-        <span class="r-stat-label">With Location Data</span>
-      </div>
     </div>
   </div>
 </header>
@@ -221,20 +217,21 @@ async function doTextSearch(resetOffset=true) {
   setLoading(false);
 }
 
-async function doNearby(resetOffset=true) {
+
+async function doNearby() {
   const pc = document.getElementById('postcode').value.trim();
   const r  = document.getElementById('radius').value;
   if (!pc) { document.getElementById('postcode').focus(); return; }
-  if (resetOffset) { currentOffset = 0; lastPC = pc; lastRadius = r; }
   currentMode = 'nearby';
   setLoading(true);
   try {
     const data = await fetch(`/schools/nearby?postcode=${encodeURIComponent(pc)}&radius=${r}`).then(r=>r.json());
     if (data.error) { setInfo('⚠️ ' + data.error); document.getElementById('results-container').innerHTML=''; setLoading(false); return; }
-    currentTotal = data.total;
-    setInfo(data.total === 0 ? `No schools within ${r} miles of ${pc.toUpperCase()}.` : `${data.total} school${data.total!==1?'s':''} within ${r} miles of ${pc.toUpperCase()}, sorted by distance.`);
+    setInfo(data.total === 0
+      ? `No schools within ${r} miles of ${pc.toUpperCase()}.`
+      : `${data.total} school${data.total!==1?'s':''} within ${r} miles of ${pc.toUpperCase()}, sorted by distance.`);
     renderSchools(data.results, true);
-    renderPagination(0, 0); // nearby returns all, no pagination needed
+    document.getElementById('pagination').innerHTML = '';
   } catch(e) { setInfo('Search failed — please try again.'); }
   setLoading(false);
 }
