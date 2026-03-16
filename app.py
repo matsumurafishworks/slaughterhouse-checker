@@ -201,9 +201,12 @@ def stats():
     totals = con.execute(
         "SELECT slaughter_status, COUNT(*) n FROM slaughterhouses GROUP BY slaughter_status"
     ).fetchall()
-    by_type = con.execute(
-        "SELECT establishment_type, COUNT(*) n FROM slaughterhouses GROUP BY establishment_type"
-    ).fetchall()
+    try:
+        by_type = con.execute(
+            "SELECT establishment_type, COUNT(*) n FROM slaughterhouses GROUP BY establishment_type"
+        ).fetchall()
+    except Exception:
+        by_type = []
     last   = con.execute("SELECT * FROM scrape_log ORDER BY id DESC LIMIT 1").fetchone()
     con.close()
     return jsonify({
