@@ -157,12 +157,16 @@ def check():
             "badge":   "non-stun",
             "colour":  "red",
             "icon":    "●",
-            "label":   "Non-Stun Religious Slaughter" if not is_cutting else "Non-Stun Certified Supply Chain",
+            "label":   "HMC Certified — Includes Non-Stun Slaughter" if not is_cutting else "HMC Certified — Non-Stun Supply Chain",
             "summary": (
-                f"This {est_label.lower()} is certified by {cert_bodies} for non-stun "
-                + ("halal slaughter. Animals are not rendered unconscious before killing."
+                f"This {est_label.lower()} is certified by {cert_bodies}. "
+                + ("HMC certifies non-stun halal slaughter. Note: some HMC-certified abattoirs "
+                   "operate both stun and non-stun protocols depending on the order. "
+                   "Verify directly with the establishment if certainty is required."
                    if not is_cutting else
-                   "halal meat. Meat processed here comes from non-stun certified abattoirs.")
+                   "HMC certifies non-stun halal supply chains. Meat processed here originates "
+                   "from HMC-certified abattoirs. Note: some certified sites operate both stun "
+                   "and non-stun protocols — verify with the establishment if certainty is required.")
             ),
         }
     elif status == "STUN_RELIGIOUS":
