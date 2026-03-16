@@ -435,56 +435,75 @@ def restaurants_search():
 @app.route("/admin/geocode-schools")
 def geocode_schools():
     """
-    One-shot endpoint to geocode any schools in the DB that have a postcode
-    but no coordinates. Hit this once after deploy — takes ~2 seconds.
+    Looks up each school by name via the DfE GIAS API to get postcode,
+    then geocodes via postcodes.io. Runs in background thread.
+    Visit /admin/geocode-status to see progress.
     """
-    import json as _json2
-    con = get_db()
-    rows = con.execute(
-        "SELECT id, postcode FROM hmc_schools WHERE postcode != '' AND latitude IS NULL"
-    ).fetchall()
+    import threading, json as _json2
 
-    if not rows:
-        con.close()
-        return jsonify({"message": "All schools already geocoded", "updated": 0})
-
-    postcodes = [r["postcode"] for r in rows]
-    updated = 0
-    errors  = []
-
-    for i in range(0, len(postcodes), 100):
-        batch_rows = rows[i:i+100]
-        batch_pcs  = postcodes[i:i+100]
+    def _do_geocode():
+        import urllib.request as _ur, urllib.parse as _up
         try:
-            with urllib.request.urlopen(
-                urllib.request.Request(
-                    "https://api.postcodes.io/postcodes",
-                    data=_json2.dumps({"postcodes": batch_pcs}).encode(),
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                ), timeout=15
-            ) as resp:
-                data = _json2.loads(resp.read())
-            for row, result in zip(batch_rows, data.get("result", [])):
-                if result and result.get("result"):
-                    lat = result["result"]["latitude"]
-                    lng = result["result"]["longitude"]
-                    con.execute(
-                        "UPDATE hmc_schools SET latitude=?, longitude=? WHERE id=?",
-                        (lat, lng, row["id"])
-                    )
-                    updated += 1
-                else:
-                    errors.append(row["postcode"])
-        except Exception as e:
-            errors.append(str(e))
+            con = get_db()
+            rows = con.execute(
+                "SELECT id, name FROM hmc_schools WHERE latitude IS NULL"
+            ).fetchall()
+            if not rows:
+                con.close()
+                return
 
-    con.commit()
-    con.close()
+            updated = 0
+            for row in rows:
+                try:
+                    # Search DfE GIAS for school by name
+                    q = _up.quote(row["name"])
+                    url = f"https://get-information-schools.service.gov.uk/api/v1/Establishments?name={q}&limit=1"
+                    req = _ur.Request(url, headers={"Accept": "application/json"})
+                    with _ur.urlopen(req, timeout=10) as resp:
+                        data = _json2.loads(resp.read())
+                    
+                    establishments = data.get("Establishments", [])
+                    if not establishments:
+                        continue
+                    
+                    est = establishments[0]
+                    postcode = (est.get("Postcode") or "").strip()
+                    address  = ", ".join(filter(None, [
+                        est.get("Street",""), est.get("Town",""), est.get("County","")
+                    ]))
+                    
+                    if not postcode:
+                        continue
+
+                    # Geocode the postcode
+                    pc_clean = postcode.replace(" ", "")
+                    geo_url  = f"https://api.postcodes.io/postcodes/{_up.quote(pc_clean)}"
+                    with _ur.urlopen(geo_url, timeout=10) as resp:
+                        geo = _json2.loads(resp.read())
+                    
+                    if geo.get("status") == 200:
+                        lat = geo["result"]["latitude"]
+                        lng = geo["result"]["longitude"]
+                        con.execute("""
+                            UPDATE hmc_schools 
+                            SET latitude=?, longitude=?, postcode=?, address=?
+                            WHERE id=?
+                        """, (lat, lng, postcode, address, row["id"]))
+                        con.commit()
+                        updated += 1
+
+                except Exception:
+                    pass
+
+            con.close()
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_do_geocode, daemon=True)
+    t.start()
     return jsonify({
-        "message": f"Geocoded {updated} of {len(rows)} schools",
-        "updated": updated,
-        "failed_postcodes": errors
+        "message": "Geocoding started — looking up each school via DfE register. Check back in 2-3 minutes.",
+        "schools_to_geocode": "up to 75"
     })
 
 
