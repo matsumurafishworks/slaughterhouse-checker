@@ -18,6 +18,7 @@
     <div class="nav-links">
       <a href="/"            class="nav-link active">Check</a>
       <a href="/restaurants" class="nav-link">Restaurants &amp; Outlets</a>
+      <a href="/schools"     class="nav-link">Schools</a>
       <a href="/why"         class="nav-link">Why?</a>
       <a href="/data"        class="nav-link">Data</a>
     </div>
@@ -67,14 +68,14 @@
       <div class="coverage-item">
         <span class="cov-icon">✅</span>
         <div>
-          <span class="cov-label" id="stat-total">282</span> UK establishments
-          <span class="cov-sub">Abattoirs &amp; cutting plants — England, Wales, Scotland &amp; NI</span>
+          <span class="cov-label" id="stat-abattoirs">—</span> UK abattoirs
+          <span class="cov-sub">Slaughterhouses &amp; game handlers — England, Wales, Scotland &amp; NI</span>
         </div>
       </div>
       <div class="coverage-item">
         <span class="cov-icon">✅</span>
         <div>
-          <span class="cov-label" id="stat-nonstun">13</span> confirmed non-stun
+          <span class="cov-label" id="stat-nonstun">—</span> confirmed non-stun
           <span class="cov-sub">HMC certified — updated monthly</span>
         </div>
       </div>
@@ -312,13 +313,14 @@ input.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
 // Load live stats
 fetch('/stats').then(r => r.json()).then(data => {
   if (!data.counts) return;
-  let total = data.counts.reduce((s, r) => s + r.n, 0);
   let nonStun = (data.counts.find(r => r.slaughter_status === 'NON_STUN') || {n:0}).n;
-  let mixed = (data.counts.find(r => r.slaughter_status === 'MIXED') || {n:0}).n;
-  document.getElementById('stat-total').textContent = total;
+  let mixed   = (data.counts.find(r => r.slaughter_status === 'MIXED')    || {n:0}).n;
   document.getElementById('stat-nonstun').textContent = nonStun + (mixed ? ' (+' + mixed + ' unverified)' : '');
   if (data.by_type) {
-    let cutting = (data.by_type.find(r => r.establishment_type === 'CUTTING_PLANT') || {n:0}).n;
-    document.getElementById('stat-cutting').textContent = cutting;
+    let abattoirs = (data.by_type.find(r => r.establishment_type === 'SLAUGHTERHOUSE') || {n:0}).n
+                  + (data.by_type.find(r => r.establishment_type === 'GAME_HANDLER')   || {n:0}).n;
+    let cutting   = (data.by_type.find(r => r.establishment_type === 'CUTTING_PLANT')  || {n:0}).n;
+    document.getElementById('stat-abattoirs').textContent = abattoirs;
+    document.getElementById('stat-cutting').textContent   = cutting;
   }
 }).catch(() => {});

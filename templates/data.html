@@ -72,6 +72,7 @@
     <div class="nav-links">
       <a href="/"            class="nav-link">Check</a>
       <a href="/restaurants" class="nav-link">Restaurants &amp; Outlets</a>
+      <a href="/schools"     class="nav-link">Schools</a>
       <a href="/why"         class="nav-link">Why?</a>
       <a href="/data"        class="nav-link active">Data</a>
     </div>
@@ -99,7 +100,8 @@
     {% if last_scrape %}
     <div class="data-meta">
       <span>Last updated: <strong>{{ last_scrape.run_at[:10] }}</strong></span>
-      <span>Total abattoirs: <strong>{{ last_scrape.fsa_total }}</strong></span>
+      <span>Abattoirs: <strong>{{ abattoirs }}</strong></span>
+      <span>Cutting plants: <strong>{{ cutting_plants }}</strong></span>
       <span>Non-stun certified: <strong>{{ last_scrape.non_stun }}</strong></span>
       <span>Possible religious: <strong>{{ last_scrape.mixed }}</strong></span>
       <span>Standard slaughter: <strong>{{ last_scrape.standard }}</strong></span>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Schools — CheckMyMeat.co.uk</title>
+  <meta name="description" content="Find UK schools certified by HMC — confirmed to serve non-stun halal meat."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+  <style>
+    .r-stats { display:flex; gap:1.5rem; flex-wrap:wrap; margin-top:1.5rem; }
+    .r-stat  { text-align:center; }
+    .r-stat-n { display:block; font-family:var(--mono); font-size:2.2rem; font-weight:700; color:var(--ink); line-height:1; }
+    .r-stat-label { display:block; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-top:0.3rem; }
+    .schools-wrap { max-width:900px; margin:0 auto; padding:2rem 1.5rem 4rem; }
+    .search-section { background:var(--paper2); border:1px solid var(--line); border-radius:8px; padding:1.5rem; margin-bottom:2rem; }
+    .search-section h2 { font-family:var(--sans); font-size:1rem; font-weight:600; margin-bottom:1rem; }
+    .search-row { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+    .search-row input, .search-row select {
+      font-family:var(--mono); font-size:0.82rem;
+      background:var(--paper); border:1px solid var(--line);
+      border-radius:4px; padding:0.5rem 0.75rem;
+      color:var(--ink); outline:none; transition:border-color 0.15s;
+    }
+    .search-row input:focus, .search-row select:focus { border-color:#999; }
+    .search-row input.q-input { flex:1; min-width:200px; }
+    .search-row button {
+      font-family:var(--mono); font-size:0.82rem; font-weight:600;
+      background:var(--ink); color:var(--paper); border:none;
+      border-radius:4px; padding:0.5rem 1.1rem; cursor:pointer;
+      transition:opacity 0.15s; white-space:nowrap;
+    }
+    .search-row button:hover { opacity:0.82; }
+    .results-section { margin-top:1.5rem; }
+    #info-bar { font-family:var(--mono); font-size:0.75rem; color:var(--muted); margin-bottom:0.75rem; min-height:1.2em; }
+    .school-card {
+      background:var(--paper2); border:1px solid var(--line); border-radius:6px;
+      padding:0.9rem 1rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;
+    }
+    .school-card .sc-name { font-weight:600; font-size:0.92rem; }
+    .school-card .sc-addr { font-size:0.78rem; color:var(--muted); margin-top:0.2rem; }
+    .school-card .sc-dist { font-family:var(--mono); font-size:0.72rem; color:var(--red); font-weight:600; white-space:nowrap; flex-shrink:0; }
+    .pagination { display:flex; gap:0.4rem; justify-content:center; margin-top:1.5rem; flex-wrap:wrap; }
+    .pagination button {
+      font-family:var(--mono); font-size:0.75rem;
+      background:var(--paper2); border:1px solid var(--line); color:var(--ink);
+      padding:0.35rem 0.7rem; border-radius:4px; cursor:pointer;
+    }
+    .pagination button:hover { border-color:#999; }
+    .pagination button.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+    .pagination button:disabled { opacity:0.35; cursor:default; }
+    #loading { display:none; text-align:center; padding:2rem; color:var(--muted); font-family:var(--mono); font-size:0.82rem; }
+    .notice-box {
+      background:var(--amber-bg); border:1px solid var(--amber-border); border-radius:6px;
+      padding:0.75rem 1rem; font-size:0.8rem; color:var(--muted); margin-bottom:1.25rem;
+    }
+    @media (max-width:600px) {
+      .search-row { flex-direction:column; align-items:stretch; }
+      .search-row input, .search-row select, .search-row button { width:100%; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">Check My Meat</a>
+    <div class="nav-links">
+      <a href="/"            class="nav-link">Check</a>
+      <a href="/restaurants" class="nav-link">Restaurants &amp; Outlets</a>
+      <a href="/schools"     class="nav-link active">Schools</a>
+      <a href="/why"         class="nav-link">Why?</a>
+      <a href="/data"        class="nav-link">Data</a>
+    </div>
+  </div>
+</nav>
+
+<header class="why-hero">
+  <div class="masthead-inner">
+    <p class="masthead-eyebrow">Confirmed Non-Stun Certified</p>
+    <h1 class="masthead-title" style="font-size: clamp(1.8rem,4.5vw,3rem);">
+      Schools<br>
+      <em>Serving Non-Stun Meat</em>
+    </h1>
+    <p class="masthead-sub">
+      Every school here is certified by the <strong>Halal Monitoring Committee (HMC)</strong>,
+      which certifies <em>non-stun slaughter only</em> and audits the entire supply chain.
+      These schools serve HMC-certified non-stun halal meat to pupils.
+    </p>
+    <div class="r-stats">
+      <div class="r-stat">
+        <span class="r-stat-n">{{ total }}</span>
+        <span class="r-stat-label">HMC Schools</span>
+      </div>
+      <div class="r-stat">
+        <span class="r-stat-n">{{ geocoded }}</span>
+        <span class="r-stat-label">With Location Data</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+{% if total == 0 %}
+<div class="schools-wrap">
+  <div class="notice-box">
+    ⏳ School data is still being scraped. Check back shortly — the weekly update runs every Sunday at 1am.
+  </div>
+</div>
+{% else %}
+
+<div class="schools-wrap">
+
+  <div class="notice-box">
+    ℹ️ This list covers schools with active HMC certification. It does not cover schools using other
+    halal certifiers, or schools with no certification. Last updated: <strong>{{ last_updated }}</strong>.
+  </div>
+
+  <!-- ── SEARCH BY NAME / POSTCODE ──────────────────────────────────────── -->
+  <div class="search-section">
+    <h2>Search by name or area</h2>
+    <div class="search-row" style="margin-bottom:0.75rem;">
+      <input class="q-input" id="q" type="text" placeholder="School name, town or postcode…" autocomplete="off"/>
+      <button onclick="doTextSearch()">Search</button>
+    </div>
+  </div>
+
+  <div class="search-section" style="margin-top:1rem;">
+    <h2>Find schools near a postcode</h2>
+    <div class="search-row">
+      <input id="postcode" type="text" placeholder="e.g. LS1 4DY" autocapitalize="characters" autocomplete="off" style="width:160px;"/>
+      <select id="radius">
+        <option value="1">1 mile</option>
+        <option value="2">2 miles</option>
+        <option value="5" selected>5 miles</option>
+        <option value="10">10 miles</option>
+        <option value="20">20 miles</option>
+      </select>
+      <button onclick="doNearby()">Find nearby</button>
+    </div>
+  </div>
+
+  <!-- ── RESULTS ─────────────────────────────────────────────────────────── -->
+  <div class="results-section">
+    <div id="info-bar"></div>
+    <div id="loading">Searching…</div>
+    <div id="results-container"></div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+</div>
+
+<script>
+const LIMIT = 50;
+let currentOffset = 0;
+let currentTotal  = 0;
+let currentMode   = 'text'; // 'text' | 'nearby'
+let lastQ         = '';
+let lastPC        = '';
+let lastRadius    = 5;
+
+function setInfo(msg) { document.getElementById('info-bar').textContent = msg; }
+function setLoading(v) { document.getElementById('loading').style.display = v ? 'block' : 'none'; }
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderSchools(schools, showDist) {
+  const c = document.getElementById('results-container');
+  if (!schools.length) { c.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;padding:1rem 0;">No schools found.</p>'; return; }
+  c.innerHTML = schools.map(s => `
+    <div class="school-card">
+      <div>
+        <div class="sc-name">${esc(s.name)}</div>
+        <div class="sc-addr">${esc([s.address, s.town, s.postcode].filter(Boolean).join(', '))}</div>
+        ${s.phone ? `<div class="sc-addr" style="margin-top:0.2rem;">📞 ${esc(s.phone)}</div>` : ''}
+      </div>
+      ${showDist && s.distance_miles != null ? `<div class="sc-dist">${s.distance_miles} mi</div>` : ''}
+    </div>`).join('');
+}
+
+function renderPagination(total, offset) {
+  const pg = document.getElementById('pagination');
+  const pages = Math.ceil(total / LIMIT);
+  const cur   = Math.floor(offset / LIMIT);
+  if (pages <= 1) { pg.innerHTML = ''; return; }
+  let html = '';
+  html += `<button ${cur===0?'disabled':''} onclick="goPage(${cur-1})">‹ Prev</button>`;
+  for (let i = 0; i < pages; i++) {
+    if (pages > 8 && Math.abs(i - cur) > 2 && i !== 0 && i !== pages-1) {
+      if (i === 1 || i === pages-2) html += '<button disabled>…</button>';
+      continue;
+    }
+    html += `<button class="${i===cur?'active':''}" onclick="goPage(${i})">${i+1}</button>`;
+  }
+  html += `<button ${cur===pages-1?'disabled':''} onclick="goPage(${cur+1})">Next ›</button>`;
+  pg.innerHTML = html;
+}
+
+function goPage(page) {
+  currentOffset = page * LIMIT;
+  if (currentMode === 'nearby') doNearby(false);
+  else doTextSearch(false);
+  window.scrollTo({top: document.querySelector('.results-section').offsetTop - 80, behavior:'smooth'});
+}
+
+async function doTextSearch(resetOffset=true) {
+  const q = document.getElementById('q').value.trim();
+  if (resetOffset) { currentOffset = 0; lastQ = q; }
+  currentMode = 'text';
+  setLoading(true);
+  try {
+    const url = `/schools/search?q=${encodeURIComponent(q)}&limit=${LIMIT}&offset=${currentOffset}`;
+    const data = await fetch(url).then(r => r.json());
+    currentTotal = data.total;
+    setInfo(q ? `${data.total} result${data.total!==1?'s':''} for "${q}"` : `Showing all ${data.total} schools`);
+    renderSchools(data.results, false);
+    renderPagination(data.total, currentOffset);
+  } catch(e) { setInfo('Search failed — please try again.'); }
+  setLoading(false);
+}
+
+async function doNearby(resetOffset=true) {
+  const pc = document.getElementById('postcode').value.trim();
+  const r  = document.getElementById('radius').value;
+  if (!pc) { document.getElementById('postcode').focus(); return; }
+  if (resetOffset) { currentOffset = 0; lastPC = pc; lastRadius = r; }
+  currentMode = 'nearby';
+  setLoading(true);
+  try {
+    const data = await fetch(`/schools/nearby?postcode=${encodeURIComponent(pc)}&radius=${r}`).then(r=>r.json());
+    if (data.error) { setInfo('⚠️ ' + data.error); document.getElementById('results-container').innerHTML=''; setLoading(false); return; }
+    currentTotal = data.total;
+    setInfo(data.total === 0 ? `No schools within ${r} miles of ${pc.toUpperCase()}.` : `${data.total} school${data.total!==1?'s':''} within ${r} miles of ${pc.toUpperCase()}, sorted by distance.`);
+    renderSchools(data.results, true);
+    renderPagination(0, 0); // nearby returns all, no pagination needed
+  } catch(e) { setInfo('Search failed — please try again.'); }
+  setLoading(false);
+}
+
+// Keyboard shortcuts
+document.getElementById('q').addEventListener('keydown', e => { if(e.key==='Enter') doTextSearch(); });
+document.getElementById('postcode').addEventListener('keydown', e => { if(e.key==='Enter') doNearby(); });
+
+// Initial load — all schools
+doTextSearch();
+</script>
+{% endif %}
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-sources">
+      <p class="footer-heading">Data sources</p>
+      <ul>
+        <li><a href="https://halalhmc.org" target="_blank" rel="noopener">Halal Monitoring Committee (HMC) — certified schools list</a></li>
+      </ul>
+    </div>
+    <div class="footer-right">
+      <p>For informational purposes only. Always verify with the school directly.</p>
+      <p style="margin-top:1rem; font-size:0.72rem; color:#444;">CheckMyMeat.co.uk — A Joint Venture Between Matsumura Fishworks and Taramabuchi Heavy Manufacturing Concern</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

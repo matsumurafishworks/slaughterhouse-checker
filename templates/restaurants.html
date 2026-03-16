@@ -255,6 +255,7 @@
     <div class="nav-links">
       <a href="/"            class="nav-link">Abattoirs</a>
       <a href="/restaurants" class="nav-link active">Restaurants &amp; Outlets</a>
+      <a href="/schools"     class="nav-link">Schools</a>
       <a href="/why"         class="nav-link">Why?</a>
       <a href="/data"        class="nav-link">Data</a>
     </div>
@@ -290,6 +291,12 @@
         <span class="r-stat-n">{{ counts.get('DESSERT', 0) }}</span>
         <span class="r-stat-label">Dessert Shops</span>
       </div>
+      {% if counts.get('OTHER', 0) > 0 %}
+      <div class="r-stat">
+        <span class="r-stat-n">{{ counts.get('OTHER', 0) }}</span>
+        <span class="r-stat-label">Other</span>
+      </div>
+      {% endif %}
     </div>
   </div>
 </header>
