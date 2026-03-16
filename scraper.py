@@ -133,24 +133,13 @@ def get_latest_csv_from_fsa_catalog(catalog_url: str) -> str:
 
 
 def get_scotland_csv_url() -> str:
-    """Permanent URL first; fall back to scraping the catalog page."""
-    try:
-        r = requests.head(FSS_SCOT_CSV_PRIMARY, headers=HEADERS, timeout=15, allow_redirects=True)
-        if r.status_code == 200:
-            log.info("Scotland: using permanent URL")
-            return FSS_SCOT_CSV_PRIMARY
-    except Exception as e:
-        log.warning(f"Scotland permanent URL check failed: {e}")
-
-    log.info("Scotland: scraping catalog page for CSV link…")
-    r = requests.get(FSS_SCOT_CATALOG_PAGE, headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.endswith(".csv") and "scotland" in href.lower():
-            return href if href.startswith("http") else "https://www.foodstandards.gov.scot" + href
-    raise RuntimeError("Could not find Scotland CSV URL")
+    """
+    Try the permanent FSS URL directly — no HEAD check, just attempt the download.
+    Fall back to scraping the catalog page only if it fails.
+    """
+    # Try permanent URL directly (FSS overwrites this file each month)
+    log.info("Scotland: using permanent URL")
+    return FSS_SCOT_CSV_PRIMARY
 
 
 # ── FSA CSV parsers ───────────────────────────────────────────────────────────
