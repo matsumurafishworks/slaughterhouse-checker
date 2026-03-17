@@ -72,13 +72,11 @@ def start_scheduler():
     _scheduler.start()
     log.info("Scheduler started — weekly scrape every Sunday at 01:00 Europe/London")
 
-    # Bootstrap: scrape immediately if DB is empty or very stale
+    # Bootstrap: only scrape if DB has never been populated
+    # Weekly cron handles regular updates — don't re-scrape on every redeploy
     age = _db_age_days()
-    if FORCE_SCRAPE or age is None or age > 14:
-        reason = (
-            "FORCE_SCRAPE set" if FORCE_SCRAPE
-            else ("no data in DB" if age is None else f"DB is {age:.1f}d old")
-        )
+    if FORCE_SCRAPE or age is None:
+        reason = "FORCE_SCRAPE set" if FORCE_SCRAPE else "no data in DB"
         log.info(f"Bootstrap scrape triggered ({reason}) — running in background thread")
         t = threading.Thread(target=run, name="bootstrap_scrape", daemon=True)
         t.start()
