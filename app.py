@@ -442,7 +442,7 @@ def geocode_schools():
     import threading, json as _json2
 
     def _do_geocode():
-        import urllib.request as _ur, urllib.parse as _up
+        import urllib.request as _ur, urllib.parse as _up, time as _time
         try:
             con = get_db()
             rows = con.execute(
@@ -452,46 +452,27 @@ def geocode_schools():
                 con.close()
                 return
 
-            updated = 0
             for row in rows:
                 try:
-                    # Search DfE GIAS for school by name
-                    q = _up.quote(row["name"])
-                    url = f"https://get-information-schools.service.gov.uk/api/v1/Establishments?name={q}&limit=1"
-                    req = _ur.Request(url, headers={"Accept": "application/json"})
+                    # Use Nominatim (OpenStreetMap) to geocode by school name
+                    q = _up.quote(row["name"] + " school UK")
+                    url = f"https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=1&countrycodes=gb"
+                    req = _ur.Request(url, headers={"User-Agent": "CheckMyMeat/1.0 (checkmymeat.co.uk)"})
                     with _ur.urlopen(req, timeout=10) as resp:
-                        data = _json2.loads(resp.read())
+                        results = _json2.loads(resp.read())
                     
-                    establishments = data.get("Establishments", [])
-                    if not establishments:
-                        continue
-                    
-                    est = establishments[0]
-                    postcode = (est.get("Postcode") or "").strip()
-                    address  = ", ".join(filter(None, [
-                        est.get("Street",""), est.get("Town",""), est.get("County","")
-                    ]))
-                    
-                    if not postcode:
-                        continue
-
-                    # Geocode the postcode
-                    pc_clean = postcode.replace(" ", "")
-                    geo_url  = f"https://api.postcodes.io/postcodes/{_up.quote(pc_clean)}"
-                    with _ur.urlopen(geo_url, timeout=10) as resp:
-                        geo = _json2.loads(resp.read())
-                    
-                    if geo.get("status") == 200:
-                        lat = geo["result"]["latitude"]
-                        lng = geo["result"]["longitude"]
-                        con.execute("""
-                            UPDATE hmc_schools 
-                            SET latitude=?, longitude=?, postcode=?, address=?
-                            WHERE id=?
-                        """, (lat, lng, postcode, address, row["id"]))
+                    if results:
+                        r = results[0]
+                        lat  = float(r["lat"])
+                        lng  = float(r["lon"])
+                        addr = r.get("display_name", "")
+                        con.execute(
+                            "UPDATE hmc_schools SET latitude=?, longitude=?, address=? WHERE id=?",
+                            (lat, lng, addr, row["id"])
+                        )
                         con.commit()
-                        updated += 1
 
+                    _time.sleep(1)  # Nominatim requires 1 req/sec
                 except Exception:
                     pass
 
