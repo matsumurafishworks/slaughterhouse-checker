@@ -9,6 +9,55 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
 
+# ── Startup ───────────────────────────────────────────────────────────────────
+import threading as _threading, time as _startup_time, urllib.request as _startup_ur
+import urllib.parse as _startup_up, json as _startup_json, logging as _startup_log
+
+_slog = _startup_log.getLogger("startup")
+
+def _auto_geocode_schools():
+    """Geocodes any schools missing coordinates via Nominatim. Runs on startup."""
+    _startup_time.sleep(5)  # Wait for DB to be ready
+    try:
+        con = get_db()
+        rows = con.execute(
+            "SELECT id, name FROM hmc_schools WHERE latitude IS NULL AND name != ''"
+        ).fetchall()
+        if not rows:
+            con.close()
+            return
+        _slog.info(f"Auto-geocoding {len(rows)} schools…")
+        updated = 0
+        for row in rows:
+            try:
+                q   = _startup_up.quote(row["name"] + " school UK")
+                url = f"https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=1&countrycodes=gb"
+                req = _startup_ur.Request(url, headers={"User-Agent": "CheckMyMeat/1.0 (checkmymeat.co.uk)"})
+                with _startup_ur.urlopen(req, timeout=10) as resp:
+                    results = _startup_json.loads(resp.read())
+                if results:
+                    r = results[0]
+                    con.execute(
+                        "UPDATE hmc_schools SET latitude=?, longitude=?, address=? WHERE id=?",
+                        (float(r["lat"]), float(r["lon"]), r.get("display_name",""), row["id"])
+                    )
+                    con.commit()
+                    updated += 1
+                _startup_time.sleep(1)
+            except Exception:
+                pass
+        _slog.info(f"Auto-geocoded {updated}/{len(rows)} schools")
+        con.close()
+    except Exception as e:
+        _slog.warning(f"Auto-geocode failed: {e}")
+
+def _startup():
+    from scraper import start_scheduler
+    start_scheduler()
+    _threading.Thread(target=_auto_geocode_schools, daemon=True).start()
+
+_threading.Thread(target=_startup, daemon=True).start()
+
 ESTABLISHMENT_LABELS = {
     "SLAUGHTERHOUSE": "Slaughterhouse",
     "GAME_HANDLER":   "Game Handling Establishment",
