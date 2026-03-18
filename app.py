@@ -7,7 +7,7 @@ import urllib.request, json as _json
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-DB_PATH = os.environ.get("DB_PATH", "slaughterhouses.db")
+DB_PATH = os.environ.get("DB_PATH", "/app/data/slaughterhouses.db")
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 import threading as _threading, time as _startup_time, urllib.request as _startup_ur

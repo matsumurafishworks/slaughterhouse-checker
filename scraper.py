@@ -26,7 +26,7 @@ from pdfminer.layout import LAParams
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-DB_PATH      = os.environ.get("DB_PATH", "slaughterhouses.db")
+DB_PATH      = os.environ.get("DB_PATH", "/app/data/slaughterhouses.db")
 FORCE_SCRAPE = os.environ.get("FORCE_SCRAPE", "").lower() in ("1", "true", "yes")
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SlaughterhouseChecker/1.0)"}
@@ -842,6 +842,36 @@ def upsert(con, rows, hmc, hfa, shechita):
 
 # ── Main scrape job ───────────────────────────────────────────────────────────
 
+def geocode_schools_in_db(con):
+    """Geocode any schools in the DB that have no coordinates, using Nominatim."""
+    rows = con.execute(
+        "SELECT id, name FROM hmc_schools WHERE latitude IS NULL AND name != ''"
+    ).fetchall()
+    if not rows:
+        return
+    log.info(f"Geocoding {len(rows)} schools via Nominatim…")
+    geocoded = 0
+    for row in rows:
+        try:
+            import urllib.parse as _up2
+            q   = _up2.quote(row["name"] + " school UK")
+            url = f"https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=1&countrycodes=gb"
+            r   = requests.get(url, headers={"User-Agent": "CheckMyMeat/1.0 (checkmymeat.co.uk)"}, timeout=10)
+            results = r.json()
+            if results:
+                res = results[0]
+                con.execute(
+                    "UPDATE hmc_schools SET latitude=?, longitude=?, address=? WHERE id=?",
+                    (float(res["lat"]), float(res["lon"]), res.get("display_name",""), row["id"])
+                )
+                con.commit()
+                geocoded += 1
+            time.sleep(1)  # Nominatim rate limit: 1 req/sec
+        except Exception as e:
+            log.warning(f"Geocode failed for {row['name']}: {e}")
+    log.info(f"Geocoded {geocoded}/{len(rows)} schools")
+
+
 def run():
     log.info("=== Scrape job started ===")
     con      = init_db()
@@ -886,6 +916,7 @@ def run():
     try:
         schools, school_urls = scrape_hmc_schools()
         upsert_schools(con, schools, school_urls)
+        geocode_schools_in_db(con)
     except Exception as e:
         log.error(f"HMC schools failed: {e}")
 
